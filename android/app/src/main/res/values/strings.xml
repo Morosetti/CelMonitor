@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CelMonitor</string>
+    <string name="status_waiting">Conecte o celular ao PC via USB</string>
+    <string name="hint_waiting">Abra o CelMonitor no Windows. Com o transporte ADB, a Depuração USB precisa estar ativada.</string>
+    <string name="status_connected">Conectado</string>
+    <string name="status_paused">Modo monitor pausado</string>
+    <string name="resume">Voltar ao modo monitor</string>
+    <string name="menu">Menu</string>
+    <string name="menu_exit">Sair do modo monitor</string>
+    <string name="menu_orientation">Orientação</string>
+    <string name="menu_landscape">Paisagem</string>
+    <string name="menu_portrait">Retrato</string>
+    <string name="menu_quality">Qualidade</string>
+    <string name="menu_quality_low">Baixa (menos banda)</string>
+    <string name="menu_quality_medium">Média</string>
+    <string name="menu_quality_high">Alta</string>
+    <string name="menu_fps">FPS</string>
+    <string name="menu_info">Informações da conexão</string>
+    <string name="close">Fechar</string>
+</resources>

@@ -1,0 +1,19 @@
+# Normaliza finais de linha no repositório (LF), convertendo conforme o tipo no checkout.
+* text=auto
+
+# Scripts Unix precisam de LF mesmo quando o checkout é feito no Windows.
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Scripts e arquivos do Windows/Visual Studio ficam em CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.vcxproj text eol=crlf
+*.props text eol=crlf
+*.inf text eol=crlf
+
+# Binários
+*.bin binary
+*.jar binary
+*.png binary

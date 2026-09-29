@@ -1,0 +1,70 @@
+;
+; CelMonIdd.inf - CelMonitor virtual display (Indirect Display Driver, UMDF 2)
+;
+
+[Version]
+PnpLockDown=1
+Signature="$Windows NT$"
+ClassGUID={4D36E968-E325-11CE-BFC1-08002BE10318}
+Class=Display
+ClassVer=2.0
+Provider=%ManufacturerName%
+CatalogFile=CelMonIdd.cat
+DriverVer=
+
+[Manufacturer]
+; 10.0...19041 = Windows 10 2004 and later (IddCx 1.4+), including Windows 11.
+%ManufacturerName%=Standard,NT$ARCH$.10.0...19041
+
+[Standard.NT$ARCH$.10.0...19041]
+%DeviceName%=CelMonIdd_Install, Root\CelMonIdd
+
+[SourceDisksFiles]
+CelMonIdd.dll=1
+
+[SourceDisksNames]
+1=%DiskName%
+
+[CelMonIdd_Install.NT]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT
+CopyFiles=UMDriverCopy
+
+[CelMonIdd_Install.NT.hw]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.HW
+AddReg=CelMonIdd_HardwareDeviceSettings
+
+[CelMonIdd_HardwareDeviceSettings]
+HKR,,"UpperFilters",%REG_MULTI_SZ%,"IndirectKmd"
+HKR,"WUDF","DeviceGroupId",%REG_SZ%,"CelMonIddGroup"
+; SYSTEM and Administrators: full access. Interactive users: read/write, so the
+; CelMonitor app can create/remove its monitor without running elevated.
+HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
+
+[CelMonIdd_Install.NT.Services]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.Services
+
+[CelMonIdd_Install.NT.Wdf]
+UmdfService=CelMonIdd,CelMonIdd_Install
+UmdfServiceOrder=CelMonIdd
+UmdfKernelModeClientPolicy=AllowKernelModeClients
+
+[CelMonIdd_Install]
+UmdfLibraryVersion=$UMDFVERSION$
+ServiceBinary=%13%\CelMonIdd.dll
+UmdfExtensions=IddCx0102
+
+[DestinationDirs]
+UMDriverCopy=13
+
+[UMDriverCopy]
+CelMonIdd.dll
+
+[Strings]
+ManufacturerName="CelMonitor"
+DiskName="CelMonitor Driver Disk"
+DeviceName="CelMonitor Virtual Display"
+REG_MULTI_SZ=0x00010000
+REG_SZ=0x00000000

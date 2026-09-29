@@ -1,0 +1,11 @@
+<Project>
+  <!-- WDK + Windows SDK from NuGet (restore with: nuget restore packages.config -PackagesDirectory packages). -->
+  <PropertyGroup>
+    <CelMonWdkVersion>10.0.28000.2526</CelMonWdkVersion>
+    <!-- The NuGet layout keeps tools under bin\<kit version>; the WDK toolset would otherwise look in bin\ directly. -->
+    <WDKBinRoot>$(MSBuildThisFileDirectory)packages\Microsoft.Windows.WDK.x64.$(CelMonWdkVersion)\c\bin\10.0.28000.0</WDKBinRoot>
+  </PropertyGroup>
+  <Import Project="packages\Microsoft.Windows.WDK.x64.$(CelMonWdkVersion)\build\native\Microsoft.Windows.WDK.x64.props" Condition="Exists('packages\Microsoft.Windows.WDK.x64.$(CelMonWdkVersion)\build\native\Microsoft.Windows.WDK.x64.props') and '$(Platform)' == 'x64'" />
+  <Import Project="packages\Microsoft.Windows.SDK.CPP.x64.$(CelMonWdkVersion)\build\native\Microsoft.Windows.SDK.cpp.x64.props" Condition="Exists('packages\Microsoft.Windows.SDK.CPP.x64.$(CelMonWdkVersion)\build\native\Microsoft.Windows.SDK.cpp.x64.props') and '$(Platform)' == 'x64'" />
+  <Import Project="packages\Microsoft.Windows.SDK.CPP.$(CelMonWdkVersion)\build\native\Microsoft.Windows.SDK.cpp.props" Condition="Exists('packages\Microsoft.Windows.SDK.CPP.$(CelMonWdkVersion)\build\native\Microsoft.Windows.SDK.cpp.props')" />
+</Project>

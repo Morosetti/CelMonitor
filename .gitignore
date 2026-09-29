@@ -1,0 +1,32 @@
+# Saídas de build (driver, app Windows, CelMonitorDriver.cer)
+build/
+
+# WDK/SDK do NuGet (restaurados com: nuget restore windows\driver\packages.config)
+windows/driver/packages/
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+.kotlin/
+
+# Arquivos gerados em testes
+*.h264
+/*.png
+*.log
+
+# Certificados e chaves: nunca versionar
+*.cer
+*.pfx
+*.p12
+*.pvk
+*.snk
+*.jks
+*.keystore
+
+# IDE / sistema operacional
+.vs/
+*.user
+.idea/
+Thumbs.db
