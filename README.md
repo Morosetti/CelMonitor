@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" width="128" alt=""></p>
+
 # CelMonitor
 
 Use um celular Android como **monitor adicional de verdade** do Windows, pelo cabo USB.

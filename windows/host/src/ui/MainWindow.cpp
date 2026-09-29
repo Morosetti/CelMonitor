@@ -20,20 +20,25 @@ namespace {
 enum : int {
     kTimer = 1,
     // group boxes
-    GrpConn = 100, GrpMonitor, GrpPerf,
-    // connection
-    LblStatus = 200, ValStatus, LblPhone, ValPhone, LblLink, ValLink, LblMonitor, ValMonitor, BtnConnect,
+    GrpMonitor = 100, GrpPerf,
+    // header: logo (painted), status, phone summary, live numbers, main button
+    ValStatus = 200, ValPhone, ValLive, BtnConnect,
     // monitor settings
     LblRes = 300, CmbRes, LblOrient, CmbOrient, LblFps, CmbFps, LblQuality, CmbQuality, LblCodec, CmbCodec, NoteCodec,
-    // performance
+    // technical details (collapsible)
     LblCurFps = 400, ValCurFps, LblLatency, ValLatency, LblRate, ValRate, LblEncode, ValEncode, LblRtt, ValRtt, LblCpu,
-    ValCpu, LblEncoder, ValEncoder,
-    // footer
-    ValMessage = 500, BtnLogs, BtnAdvanced, GrpHelp, ValHelp,
+    ValCpu, LblEncoder, ValEncoder, LblLink, ValLink, LblMonitor, ValMonitor,
+    // messages, guide, footer
+    ValMessage = 500, BtnLogs, BtnAdvanced, GrpHelp, ValHelp, BtnDetails,
 };
+
+// Controls of the "Detalhes técnicos" box, shown only when expanded.
+constexpr int kDetailIds[] = {GrpPerf, LblCurFps, ValCurFps, LblLatency, ValLatency, LblRate, ValRate, LblEncode, ValEncode,
+                              LblRtt, ValRtt, LblCpu, ValCpu, LblEncoder, ValEncoder, LblLink, ValLink, LblMonitor, ValMonitor};
 
 constexpr int kQualities[] = {25, 50, 80, 100};
 constexpr int kFps[] = {30, 60};
+constexpr int kLogoSize = 64;  // header logo, in 96-dpi pixels
 
 std::wstring Fmt(const wchar_t* fmt, double v) {
     wchar_t b[64];
@@ -69,7 +74,9 @@ bool MainWindow::Create(HINSTANCE instance, int show, bool startHidden) {
                             CW_USEDEFAULT, CW_USEDEFAULT, 100, 100, nullptr, nullptr, instance, this);
     if (!hwnd_) return false;
     dpi_ = GetDpiForWindow(hwnd_);
+    showDetails_ = GetAppFlag(L"showDetails", false);
     RecreateFonts();
+    LoadIcons();
     CreateControls();
     Layout();
     taskbarCreated_ = RegisterWindowMessageW(L"TaskbarCreated");
@@ -99,6 +106,41 @@ void MainWindow::RecreateFonts() {
     font_ = CreateFontIndirectW(&ncm.lfMessageFont);
     ncm.lfMessageFont.lfWeight = FW_SEMIBOLD;
     bold_ = CreateFontIndirectW(&ncm.lfMessageFont);
+    if (big_) DeleteObject(big_);
+    ncm.lfMessageFont.lfHeight = ncm.lfMessageFont.lfHeight * 3 / 2;
+    big_ = CreateFontIndirectW(&ncm.lfMessageFont);
+}
+
+void MainWindow::LoadIcons() {
+    for (HICON* i : {&logoLive_, &logoIdle_, &smallLive_, &smallIdle_})
+        if (*i) DestroyIcon(*i), *i = nullptr;
+    HINSTANCE inst = GetModuleHandleW(nullptr);
+    LoadIconWithScaleDown(inst, MAKEINTRESOURCEW(1), Scale(kLogoSize), Scale(kLogoSize), &logoLive_);
+    LoadIconWithScaleDown(inst, MAKEINTRESOURCEW(2), Scale(kLogoSize), Scale(kLogoSize), &logoIdle_);
+    LoadIconMetric(inst, MAKEINTRESOURCEW(1), LIM_SMALL, &smallLive_);
+    LoadIconMetric(inst, MAKEINTRESOURCEW(2), LIM_SMALL, &smallIdle_);
+}
+
+// The logo tells the state at a glance: in the header, the title bar/taskbar button and the tray.
+void MainWindow::SetStreamingLook(bool streaming) {
+    if (streaming == streamingLook_) return;
+    streamingLook_ = streaming;
+    HICON icon = streaming ? smallLive_ : smallIdle_;
+    SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, LPARAM(icon));
+    NOTIFYICONDATAW nid = TrayData();
+    nid.uFlags = NIF_ICON;
+    nid.hIcon = icon;
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
+    InvalidateRect(hwnd_, &logoRect_, TRUE);
+}
+
+void MainWindow::Paint() {
+    PAINTSTRUCT ps;
+    HDC dc = BeginPaint(hwnd_, &ps);
+    if (HICON logo = streamingLook_ ? logoLive_ : logoIdle_)
+        DrawIconEx(dc, logoRect_.left, logoRect_.top, logo, logoRect_.right - logoRect_.left, logoRect_.bottom - logoRect_.top, 0,
+                   nullptr, DI_NORMAL);
+    EndPaint(hwnd_, &ps);
 }
 
 void MainWindow::CreateControls() {
@@ -107,24 +149,24 @@ void MainWindow::CreateControls() {
                                  reinterpret_cast<HMENU>(INT_PTR(id)), GetModuleHandleW(nullptr), nullptr);
         ctl_[id] = c;
     };
-    make(GrpConn, L"BUTTON", L"Conexão", BS_GROUPBOX);
-    make(GrpMonitor, L"BUTTON", L"Monitor no celular", BS_GROUPBOX);
-    make(GrpPerf, L"BUTTON", L"Desempenho", BS_GROUPBOX);
+    make(GrpMonitor, L"BUTTON", L"Tela do celular", BS_GROUPBOX);
+    make(GrpPerf, L"BUTTON", L"Detalhes técnicos", BS_GROUPBOX);
     const std::pair<int, const wchar_t*> labels[] = {
-        {LblStatus, L"Status:"}, {LblPhone, L"Celular:"}, {LblLink, L"Conexão USB:"}, {LblMonitor, L"Monitor virtual:"},
+        {LblLink, L"Conexão:"}, {LblMonitor, L"Monitor virtual:"},
         {LblRes, L"Resolução:"}, {LblOrient, L"Orientação:"}, {LblFps, L"FPS máximo:"}, {LblQuality, L"Qualidade:"},
-        {LblCodec, L"Codec:"}, {LblCurFps, L"FPS atual:"}, {LblLatency, L"Latência aprox.:"}, {LblRate, L"Taxa:"},
+        {LblCodec, L"Codec:"}, {LblCurFps, L"FPS atual:"}, {LblLatency, L"Latência:"}, {LblRate, L"Taxa:"},
         {LblEncode, L"Encode:"}, {LblRtt, L"RTT USB:"}, {LblCpu, L"CPU / GPU:"}, {LblEncoder, L"Encoder:"},
     };
     for (auto& [id, text] : labels) make(id, L"STATIC", text, SS_LEFT);
-    for (int id : {ValStatus, ValPhone, ValLink, ValMonitor, ValCurFps, ValLatency, ValRate, ValEncode, ValRtt, ValCpu, ValEncoder})
-        make(id, L"STATIC", L"—", SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX);
-    make(NoteCodec, L"STATIC", L"(próxima conexão)", SS_LEFT);
+    for (int id : {ValStatus, ValPhone, ValLive, ValLink, ValMonitor, ValCurFps, ValLatency, ValRate, ValEncode, ValRtt, ValCpu, ValEncoder})
+        make(id, L"STATIC", L"", SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX);
+    make(NoteCodec, L"STATIC", L"Mudanças de codec valem a partir da próxima conexão.", SS_LEFT);
     for (int id : {CmbRes, CmbOrient, CmbFps, CmbQuality, CmbCodec}) make(id, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP);
     make(BtnConnect, L"BUTTON", L"Conectar", BS_PUSHBUTTON | WS_TABSTOP);
     make(ValMessage, L"STATIC", L"", SS_LEFT | SS_NOPREFIX);
-    make(BtnLogs, L"BUTTON", L"Abrir pasta de logs", BS_PUSHBUTTON | WS_TABSTOP);
-    make(BtnAdvanced, L"BUTTON", L"Configurações avançadas deste celular...", BS_PUSHBUTTON | WS_TABSTOP);
+    make(BtnDetails, L"BUTTON", L"", BS_PUSHBUTTON | WS_TABSTOP);
+    make(BtnAdvanced, L"BUTTON", L"Configurações avançadas...", BS_PUSHBUTTON | WS_TABSTOP);
+    make(BtnLogs, L"BUTTON", L"Pasta de logs", BS_PUSHBUTTON | WS_TABSTOP);
     make(GrpHelp, L"BUTTON", L"Próximo passo", BS_GROUPBOX);
     make(ValHelp, L"STATIC", L"", SS_LEFT | SS_NOPREFIX);
 
@@ -132,7 +174,7 @@ void MainWindow::CreateControls() {
     FillCombo(CmbOrient, {L"Paisagem", L"Retrato"});
     FillCombo(CmbFps, {L"30", L"60"});
     FillCombo(CmbQuality, {L"Baixa (menos banda)", L"Média", L"Alta", L"Máxima"});
-    FillCombo(CmbCodec, {L"H.264 (compatível)", L"H.265 / HEVC (menos banda)"});
+    FillCombo(CmbCodec, {L"H.264 (compatível)", L"H.265 (menos banda)"});
     DeviceProfile s = controller_.Profile();
     SelectCombo(CmbOrient, s.session.portrait ? 1 : 0);
     SelectCombo(CmbFps, s.session.fps <= 30 ? 0 : 1);
@@ -150,88 +192,96 @@ void MainWindow::CreateControls() {
     updating_ = false;
 }
 
+// One column, top to bottom in order of importance: state (logo, status, phone, live numbers, main button),
+// what to do next, the phone screen settings, and the technical details only when the user asks for them.
 void MainWindow::Layout() {
     for (auto& [id, h] : ctl_) SendMessageW(h, WM_SETFONT, WPARAM(font_), TRUE);
-    SendMessageW(ctl_[ValStatus], WM_SETFONT, WPARAM(bold_), TRUE);
+    SendMessageW(ctl_[ValStatus], WM_SETFONT, WPARAM(big_), TRUE);
+    SendMessageW(ctl_[ValPhone], WM_SETFONT, WPARAM(bold_), TRUE);
 
-    // Two columns (fits 1366x768 / 1600x900 screens): left = connection + monitor settings,
-    // right = performance + first-steps guide + messages.
-    const int m = Scale(12), labelW = Scale(118), valueW = Scale(330), rowH = Scale(26), comboH = Scale(200);
-    const int colW = Scale(12) + labelW + valueW + Scale(12);
+    const int m = Scale(16), W = Scale(560), pad = Scale(12), rowH = Scale(26), comboH = Scale(200);
     auto place = [&](int id, int x, int yy, int w, int h) { MoveWindow(ctl_[id], x, yy, w, h, FALSE); };
-
-    // ---- left column
-    int x0 = m, innerX = x0 + Scale(12), valueX = innerX + labelW;
     int y = m;
-    auto row = [&](int label, int value) {
-        place(label, innerX, y + Scale(3), labelW, rowH - Scale(4));
-        place(value, valueX, y, valueW, rowH);
-        y += rowH;
-    };
+
+    // ---- header
+    const int logo = Scale(kLogoSize), btnW = Scale(130);
+    logoRect_ = {m, y, m + logo, y + logo};
+    const int tx = m + logo + Scale(16), tw = m + W - btnW - Scale(12) - tx;
+    place(ValStatus, tx, y, tw, Scale(30));
+    place(ValPhone, tx, y + Scale(32), tw, Scale(20));
+    place(ValLive, tx, y + Scale(52), tw, Scale(20));
+    place(BtnConnect, m + W - btnW, y + (logo - Scale(34)) / 2, btnW, Scale(34));
+    y += logo + Scale(10);
+    place(ValMessage, m, y, W, Scale(34));
+    y += Scale(38);
+
+    // ---- next step
     int top = y;
-    y += Scale(22);
-    row(LblStatus, ValStatus);
-    row(LblPhone, ValPhone);
-    row(LblLink, ValLink);
-    row(LblMonitor, ValMonitor);
-    place(BtnConnect, valueX, y + Scale(4), Scale(140), Scale(30));
-    y += Scale(44);
-    place(GrpConn, x0, top, colW, y - top);
+    place(ValHelp, m + pad, y + Scale(22), W - 2 * pad, Scale(92));
+    y += Scale(22) + Scale(92) + Scale(8);
+    place(GrpHelp, m, top, W, y - top);
+    y += Scale(10);
 
-    y += Scale(8);
+    // ---- phone screen settings: two columns of label + combo
     top = y;
-    y += Scale(22);
-    for (auto [l, c] : {std::pair{LblRes, CmbRes}, {LblOrient, CmbOrient}, {LblFps, CmbFps}, {LblQuality, CmbQuality}}) {
-        place(l, innerX, y + Scale(4), labelW, rowH - Scale(4));
-        place(c, valueX, y, c == CmbRes ? valueW : Scale(200), comboH);
-        y += rowH + Scale(6);
-    }
-    place(LblCodec, innerX, y + Scale(4), labelW, rowH - Scale(4));
-    place(CmbCodec, valueX, y, Scale(200), comboH);
-    place(NoteCodec, valueX + Scale(208), y + Scale(4), valueW - Scale(208), rowH - Scale(4));
-    y += rowH + Scale(8);
-    place(BtnAdvanced, valueX, y, Scale(300), Scale(28));
-    y += Scale(28) + Scale(12);
-    place(GrpMonitor, x0, top, colW, y - top);
-    int leftBottom = y;
-
-    // ---- right column
-    int x1 = x0 + colW + m;
-    innerX = x1 + Scale(12);
-    y = m;
-    top = y;
-    y += Scale(22);
-    const int half = (labelW + valueW) / 2;
-    auto pair = [&](int l1, int v1, int l2, int v2) {
-        place(l1, innerX, y + Scale(3), Scale(100), rowH - Scale(4));
-        place(v1, innerX + Scale(100), y, half - Scale(100), rowH);
-        place(l2, innerX + half, y + Scale(3), Scale(100), rowH - Scale(4));
-        place(v2, innerX + half + Scale(100), y, half - Scale(100), rowH);
-        y += rowH;
+    y += Scale(24);
+    const int labelW = Scale(92), colB = m + W / 2 + Scale(8);
+    const int comboA = colB - Scale(16) - (m + pad + labelW), comboB = m + W - pad - (colB + labelW);
+    auto field = [&](int label, int combo, int x, int w) {
+        place(label, x, y + Scale(4), labelW, rowH - Scale(4));
+        place(combo, x + labelW, y, w, comboH);
     };
-    pair(LblCurFps, ValCurFps, LblLatency, ValLatency);
-    pair(LblRate, ValRate, LblEncode, ValEncode);
-    pair(LblRtt, ValRtt, LblCpu, ValCpu);
-    place(LblEncoder, innerX, y + Scale(3), Scale(100), rowH - Scale(4));
-    place(ValEncoder, innerX + Scale(100), y, labelW + valueW - Scale(100), rowH);
-    y += rowH + Scale(10);
-    place(GrpPerf, x1, top, colW, y - top);
+    field(LblRes, CmbRes, m + pad, W - 2 * pad - labelW);
+    y += rowH + Scale(8);
+    field(LblOrient, CmbOrient, m + pad, comboA);
+    field(LblFps, CmbFps, colB, comboB);
+    y += rowH + Scale(8);
+    field(LblQuality, CmbQuality, m + pad, comboA);
+    field(LblCodec, CmbCodec, colB, comboB);
+    y += rowH + Scale(6);
+    place(NoteCodec, colB, y, W / 2 - Scale(8) - pad, Scale(34));
+    y += Scale(34) + Scale(6);
+    place(GrpMonitor, m, top, W, y - top);
+    y += Scale(10);
 
-    y += Scale(8);
-    top = y;
-    int helpH = std::max(Scale(120), leftBottom - y - Scale(22) - Scale(10) - Scale(8) - Scale(40) - Scale(36));
-    place(ValHelp, innerX, y + Scale(22), colW - Scale(24), helpH);
-    y += Scale(22) + helpH + Scale(10);
-    place(GrpHelp, x1, top, colW, y - top);
-    y += Scale(8);
-    place(ValMessage, x1, y, colW, Scale(40));
-    y += Scale(40);
-    place(BtnLogs, x1 + colW - Scale(160), y, Scale(160), Scale(28));
+    // ---- footer buttons
+    SetText(BtnDetails, showDetails_ ? L"Ocultar detalhes técnicos  ▴" : L"Detalhes técnicos  ▾");
+    place(BtnDetails, m, y, Scale(190), Scale(28));
+    place(BtnAdvanced, m + Scale(198), y, Scale(200), Scale(28));
+    place(BtnLogs, m + W - Scale(120), y, Scale(120), Scale(28));
     y += Scale(28);
 
-    const int width = x1 + colW;
-    y = std::max(y, leftBottom) + m;
-    RECT rc = {0, 0, width + m, y};
+    // ---- technical details (collapsible)
+    for (int id : kDetailIds) ShowWindow(ctl_[id], showDetails_ ? SW_SHOWNA : SW_HIDE);
+    if (showDetails_) {
+        y += Scale(10);
+        top = y;
+        y += Scale(22);
+        const int half = (W - 2 * pad) / 2, lw = Scale(96), x = m + pad;
+        auto pair = [&](int l1, int v1, int l2, int v2) {
+            place(l1, x, y + Scale(3), lw, rowH - Scale(4));
+            place(v1, x + lw, y, half - lw, rowH);
+            place(l2, x + half, y + Scale(3), lw, rowH - Scale(4));
+            place(v2, x + half + lw, y, half - lw, rowH);
+            y += rowH;
+        };
+        auto full = [&](int l, int v) {
+            place(l, x, y + Scale(3), lw, rowH - Scale(4));
+            place(v, x + lw, y, W - 2 * pad - lw, rowH);
+            y += rowH;
+        };
+        pair(LblCurFps, ValCurFps, LblLatency, ValLatency);
+        pair(LblRate, ValRate, LblEncode, ValEncode);
+        pair(LblRtt, ValRtt, LblCpu, ValCpu);
+        full(LblEncoder, ValEncoder);
+        full(LblLink, ValLink);
+        full(LblMonitor, ValMonitor);
+        y += Scale(8);
+        place(GrpPerf, m, top, W, y - top);
+    }
+
+    y += m;
+    RECT rc = {0, 0, W + 2 * m, y};
     AdjustWindowRectExForDpi(&rc, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE, 0, dpi_);
     SetWindowPos(hwnd_, nullptr, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     InvalidateRect(hwnd_, nullptr, TRUE);
@@ -266,14 +316,24 @@ void MainWindow::Refresh() {
     }
     SetText(ValStatus, status);
     UpdateTrayTip(status);
+    SetStreamingLook(streaming);
 
-    std::wstring phone = L"—";
+    // Header: which phone, how it is connected, and (while streaming) what the phone is showing.
+    std::wstring phone = L"Nenhum celular conectado";
     if (st.hasSession && !si.model.empty())
-        phone = si.manufacturer + L" " + si.model + L" · Android " + si.androidVersion + L" · tela " +
-                std::to_wstring(si.phoneWidth) + L"×" + std::to_wstring(si.phoneHeight);
+        phone = si.manufacturer + L" " + si.model + L"  ·  Android " + si.androidVersion + L"  ·  " + si.transport;
     else if (!st.deviceModel.empty())
-        phone = st.deviceModel + L" (" + std::wstring(st.serial.begin(), st.serial.end()) + L")";
+        phone = st.deviceModel;
+    else if (!st.serial.empty())
+        phone = L"Celular detectado";
     SetText(ValPhone, phone);
+    std::wstring live;
+    if (streaming && si.mode.width) {
+        live = std::to_wstring(si.mode.width) + L" × " + std::to_wstring(si.mode.height) + L"  ·  " +
+               (si.fps < 1 ? std::wstring(L"tela parada") : Fmt(L"%.0f fps", si.fps));
+        if (si.latencyUs) live += Fmt(L"  ·  ~%.0f ms de atraso", si.latencyUs / 1000.0);
+    }
+    SetText(ValLive, live);
     SetText(ValLink, st.hasSession ? si.transport : (st.serial.empty() ? L"nenhum celular detectado" : L"celular detectado — aguardando"));
     std::wstring mon = L"Inativo";
     if (st.hasSession && !si.displayName.empty()) {
@@ -343,6 +403,12 @@ void MainWindow::OnCommand(int id, int code) {
         else controller_.Connect();
         return;
     }
+    if (id == BtnDetails && code == BN_CLICKED) {
+        showDetails_ = !showDetails_;
+        SetAppFlag(L"showDetails", showDetails_);
+        Layout();
+        return;
+    }
     if (id == BtnAdvanced && code == BN_CLICKED) {
         ShowAdvancedDialog(hwnd_, controller_, font_, dpi_);
         return;
@@ -375,15 +441,24 @@ LRESULT MainWindow::Handle(UINT msg, WPARAM w, LPARAM l) {
     case WM_COMMAND:
         OnCommand(LOWORD(w), HIWORD(w));
         return 0;
+    case WM_PAINT:
+        Paint();
+        return 0;
     case WM_CTLCOLORSTATIC: {
         HDC dc = reinterpret_cast<HDC>(w);
+        HWND c = reinterpret_cast<HWND>(l);
         SetBkMode(dc, TRANSPARENT);
-        if (reinterpret_cast<HWND>(l) == ctl_[ValMessage] && messageIsError_) SetTextColor(dc, RGB(196, 43, 28));
+        if (c == ctl_[ValMessage] && messageIsError_) SetTextColor(dc, RGB(196, 43, 28));
+        else if (c == ctl_[ValLive] || c == ctl_[NoteCodec]) SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
         return reinterpret_cast<LRESULT>(bg_);
     }
     case WM_DPICHANGED: {
         dpi_ = HIWORD(w);
         RecreateFonts();
+        LoadIcons();
+        bool look = streamingLook_;
+        streamingLook_ = !look;  // force SetStreamingLook to re-apply the reloaded icons
+        SetStreamingLook(look);
         auto* r = reinterpret_cast<RECT*>(l);
         SetWindowPos(hwnd_, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
         Layout();
@@ -437,7 +512,7 @@ void MainWindow::AddTrayIcon() {
     NOTIFYICONDATAW nid = TrayData();
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
     nid.uCallbackMessage = kMsgTray;
-    nid.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1));
+    nid.hIcon = streamingLook_ ? smallLive_ : smallIdle_;
     if (!nid.hIcon) nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
     wcscpy_s(nid.szTip, L"CelMonitor");
     Shell_NotifyIconW(NIM_ADD, &nid);

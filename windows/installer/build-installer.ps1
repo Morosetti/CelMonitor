@@ -24,7 +24,11 @@ if (-not $env:JAVA_TOOL_OPTIONS) {
     New-Item -ItemType Directory -Force "$env:SystemDrive\jtmp" | Out-Null
     $env:JAVA_TOOL_OPTIONS = "-Djdk.net.unixdomain.tmpdir=$env:SystemDrive\jtmp"
 }
+# The JDK prints "Picked up JAVA_TOOL_OPTIONS" on stderr; with "Stop" Windows PowerShell would treat it as fatal
+# when the output is redirected. The exit code decides.
+$ErrorActionPreference = "Continue"
 & "$root\android\gradlew.bat" -p "$root\android" testDebugUnitTest assembleRelease --console=plain -q
+$ErrorActionPreference = "Stop"
 if ($LASTEXITCODE) { throw "build do Android falhou" }
 
 Write-Host "== Staging"

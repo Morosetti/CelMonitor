@@ -104,6 +104,10 @@ Diagnóstico por etapa com o `celmon-cli`:
 2. Android: gerar o evento na `SurfaceView` (coordenadas normalizadas 0–65535 sobre a área do vídeo) e enviar pela `ClientSession`.
 3. Windows: tratar em `HostSession::Handle` (hoje `INPUT_MOUSE`/`INPUT_TOUCH` já são validados e ignorados) e injetar com `SendInput`/`InjectSyntheticPointerInput`, convertendo para o retângulo do monitor virtual (`VirtualDisplay::DesktopRect`).
 
+## Logo e ícones
+
+`windows\host\res\make-icon.ps1` desenha a logo por código (monitor + celular com uma janela atravessando as duas telas) e gera: `CelMonitor.ico` (colorido: exe, barra de tarefas, bandeja transmitindo), `CelMonitorIdle.ico` (cinza: bandeja/janela sem transmissão), `docs\logo.png` e os vetores do Android (`ic_launcher_foreground.xml`, `logo.xml`). Os arquivos gerados são versionados; rode o script só para mudar a logo (`-Preview arquivo.png` gera uma prancha com todos os tamanhos em fundo claro e escuro).
+
 ## Publicar uma versão
 
 1. Atualize a versão em `windows/host/res/CelMonitor.rc` e `android/app/build.gradle.kts` (`versionCode`/`versionName`).

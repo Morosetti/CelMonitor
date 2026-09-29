@@ -42,14 +42,14 @@ Da próxima vez basta plugar o cabo: se o CelMonitor estiver na bandeja, ele con
 
 ## Uso no dia a dia
 
-- **Bandeja do Windows:** o ícone do CelMonitor mostra o estado ao passar o mouse. Clique para abrir; botão direito para *Conectar/Desconectar*, *Iniciar com o Windows* e *Sair*.
+- **Bandeja do Windows:** o ícone fica **azul enquanto transmite** e **cinza** quando não há celular transmitindo; passe o mouse para ver o estado. Clique para abrir; botão direito para *Conectar/Desconectar*, *Iniciar com o Windows* e *Sair*.
 - **Fechar a janela (X)** só a esconde; o CelMonitor continua na bandeja. Para encerrar, use *Sair*.
 - **No celular**, o botão ▼ no canto abre o menu: sair do modo monitor, orientação, qualidade, FPS e informações da conexão.
-- **Na janela do PC:** resolução, orientação, FPS máximo, qualidade e codec. Tudo fica salvo **por celular**.
+- **Na janela do PC:** o topo mostra o estado, o celular e os números ao vivo (resolução, FPS, atraso); abaixo, *Próximo passo* diz o que fazer e *Tela do celular* tem resolução, orientação, FPS máximo, qualidade e codec. Tudo fica salvo **por celular**. Os números técnicos (taxa, encode, RTT, CPU/GPU, encoder) ficam em **Detalhes técnicos**.
 
 ## Celular diferente? Configurações avançadas
 
-Cada celular tem o seu próprio perfil. Se algo não funcionar bem num aparelho, ajuste em **"Configurações avançadas deste celular…"** na janela:
+Cada celular tem o seu próprio perfil. Se algo não funcionar bem num aparelho, ajuste em **"Configurações avançadas..."** na janela (valem para o celular conectado):
 
 | Opção | Quando mudar |
 |---|---|
@@ -73,7 +73,7 @@ Cada celular tem o seu próprio perfil. Se algo não funcionar bem num aparelho,
 | Imagem escura/amarelada | É o *Luz Noturna* do Windows ou o *Modo de leitura* do celular. |
 | Transferência de arquivos (MTP) sumiu | Enquanto a conexão direta está ativa o celular fica em modo acessório; desconecte e reconecte o cabo para voltar ao normal. |
 
-Log detalhado: botão **Abrir pasta de logs** (arquivo `celmonitor.log`).
+Log detalhado: botão **Pasta de logs** (arquivo `celmonitor.log`).
 
 ## Desinstalar
 

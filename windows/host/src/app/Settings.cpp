@@ -98,4 +98,14 @@ void AppSettings::Save() const {
     WritePrivateProfileStringW(kAppSection, L"startMinimized", startMinimized ? L"1" : L"0", ini.c_str());
 }
 
+bool GetAppFlag(const wchar_t* key, bool def) {
+    std::wstring ini = SettingsFilePath();
+    return ini.empty() ? def : GetPrivateProfileIntW(kAppSection, key, def ? 1 : 0, ini.c_str()) != 0;
+}
+
+void SetAppFlag(const wchar_t* key, bool value) {
+    std::wstring ini = SettingsFilePath();
+    if (!ini.empty()) WritePrivateProfileStringW(kAppSection, key, value ? L"1" : L"0", ini.c_str());
+}
+
 }  // namespace celmon

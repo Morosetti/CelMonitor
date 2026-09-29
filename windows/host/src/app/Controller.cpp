@@ -10,8 +10,8 @@ const wchar_t* PhaseText(Phase p) {
     case Phase::Starting: return L"Iniciando...";
     case Phase::NoDriver: return L"Driver do monitor virtual não instalado";
     case Phase::NoAdb: return L"ADB não encontrado";
-    case Phase::WaitingDevice: return L"Conecte o celular ao PC via USB";
-    case Phase::Unauthorized: return L"Autorize a depuração USB no celular";
+    case Phase::WaitingDevice: return L"Conecte o celular pelo cabo USB";
+    case Phase::Unauthorized: return L"Permita a depuração USB no celular";
     case Phase::InstallingApp: return L"Instalando o app no celular...";
     case Phase::WaitingApp: return L"Aguardando o app no celular";
     case Phase::Connecting: return L"Conectando...";
@@ -314,7 +314,7 @@ bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
     // 1) Phone already in accessory mode: open the bulk channel.
     for (auto& acc : AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA)) {
         if (!acc.serial.empty() && acc.serial != dev.serial) continue;
-        SetPhase(Phase::Connecting, L"Conectando ao " + dev.model + L" por USB direto...");
+        SetPhase(Phase::Connecting, L"Conectando ao " + dev.model + L"...");
         if (launch) adb_.LaunchApp(dev.serial);  // usually already opened by Android when the accessory attached
         std::unique_ptr<IConnection> conn;
         Status s = AoaTransport::Open(dev.serial, conn, maxTransfer);
@@ -346,7 +346,7 @@ bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
         if (i.serial == dev.serial && !(i.vid == 0x18D1 && (i.pid == 0x2D00 || i.pid == 0x2D01))) adbIf = &i;
     if (!adbIf) return false;
 
-    SetPhase(Phase::Connecting, L"Ativando a conexão USB direta (modo acessório)...");
+    SetPhase(Phase::Connecting, L"Ativando o USB direto...");
     const std::wstring adbInstance = adbIf->instance;
     const UsbInterfaceInfo target = *adbIf;
     int protocol = 0;
@@ -492,8 +492,8 @@ void Controller::UpdateConnection() {
         state_.serial.clear();
         state_.deviceModel.clear();
         state_.phase = unauthorized ? Phase::Unauthorized : Phase::WaitingDevice;
-        state_.status = unauthorized ? L"Toque em \"Permitir\" na mensagem de depuração USB do celular"
-                                     : L"Conecte o celular ao PC via USB (com a Depuração USB ativada)";
+        state_.status = unauthorized ? PhaseText(Phase::Unauthorized)
+                                     : PhaseText(Phase::WaitingDevice);
         return;
     }
     if (dev->serial != knownSerial_) {
@@ -509,7 +509,7 @@ void Controller::UpdateConnection() {
         profile_ = DeviceProfile::Load(dev->serial);
     }
     if (userDisconnected) {
-        SetPhase(Phase::Disconnected, L"Desconectado. Clique em Conectar para usar o celular como monitor.");
+        SetPhase(Phase::Disconnected, L"");
         return;
     }
 
@@ -527,8 +527,9 @@ void Controller::UpdateConnection() {
     }
     if (transport == TransportMode::AoaOnly) {
         // Profile forbids ADB: explain why the direct connection is not available instead of silently waiting.
-        SetPhase(Phase::WaitingApp, AoaDriverInstalled() ? L"USB direto indisponível: o celular não entrou no modo acessório"
-                                                         : L"USB direto indisponível: driver USB do CelMonitor não instalado");
+        SetPhase(Phase::WaitingApp, L"USB direto indisponível");
+        SetMessage(AoaDriverInstalled() ? L"O celular não entrou no modo acessório (perfil \"Somente USB direto\")."
+                                        : L"O driver USB do CelMonitor não está instalado (perfil \"Somente USB direto\").", true);
         std::lock_guard<std::mutex> lock(lock_);
         nextAttempt_ = GetTickCount64() + 3000;
         return;
@@ -588,7 +589,7 @@ void Controller::UpdateConnection() {
         state_.messageIsError = true;
     }
     state_.phase = Phase::WaitingApp;
-    state_.status = L"Abra o CelMonitor no celular (ou toque em \"Voltar ao modo monitor\")";
+    state_.status = L"Abra o CelMonitor no celular";
     nextAttempt_ = GetTickCount64() + 1500;
 }
 

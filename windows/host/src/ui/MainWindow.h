@@ -35,6 +35,9 @@ private:
     void SelectCombo(int id, int index);
     int Scale(int v) const { return MulDiv(v, dpi_, 96); }
     void RecreateFonts();
+    void LoadIcons();
+    void SetStreamingLook(bool streaming);
+    void Paint();
     NOTIFYICONDATAW TrayData() const;
     void AddTrayIcon();
     void UpdateTrayTip(const std::wstring& status);
@@ -45,8 +48,13 @@ private:
     Controller& controller_;
     HWND hwnd_ = nullptr;
     UINT dpi_ = 96;
-    HFONT font_ = nullptr, bold_ = nullptr;
+    HFONT font_ = nullptr, bold_ = nullptr, big_ = nullptr;
     HBRUSH bg_ = nullptr;
+    // Logo in the header (large) and in the tray/title bar (small): coloured while streaming, grey otherwise.
+    HICON logoLive_ = nullptr, logoIdle_ = nullptr, smallLive_ = nullptr, smallIdle_ = nullptr;
+    RECT logoRect_ = {};
+    bool streamingLook_ = true;      // so the first SetStreamingLook(false) applies the grey icons
+    bool showDetails_ = false;       // "Detalhes técnicos" expanded
     std::map<int, HWND> ctl_;
     std::map<int, std::wstring> textCache_;
     std::vector<Mode> comboModes_;   // resolution combo items after "Automática"
