@@ -36,6 +36,8 @@ public:
 
     // Opens the app on the phone (used with the USB accessory transport too, whose data does not go through adb).
     void LaunchApp(const std::string& serial);
+    // Kills the app on the phone (releases a USB accessory it may still hold).
+    void ForceStopApp(const std::string& serial);
 
     // Installs the given APK (used when the app is missing).
     Status InstallApk(const std::string& serial, const std::wstring& apkPath);

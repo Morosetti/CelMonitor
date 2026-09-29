@@ -108,6 +108,7 @@ struct HelloAck {
 };
 
 struct StreamConfig {
+    enum : uint32_t { NoVendorLowLatency = 1 };  // flags: phone must not use vendor low-latency decoder keys
     uint32_t streamId = 0;
     uint32_t width = 0;
     uint32_t height = 0;

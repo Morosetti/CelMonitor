@@ -31,6 +31,7 @@ struct ControllerState {
     Phase phase = Phase::Starting;
     std::wstring status;        // short text for the status line
     std::wstring message;       // last warning/error, empty if none
+    std::wstring help;          // first-steps guide for the current situation (multi-line), empty when connected
     bool messageIsError = false;
     std::string serial;
     std::wstring deviceModel;
@@ -47,7 +48,10 @@ public:
     void Shutdown();
 
     ControllerState State() const;
-    AppSettings Settings() const;
+    DeviceProfile Profile() const;          // settings of the connected (or last) phone
+    std::string ProfileSerial() const;
+    // Replaces the phone's profile (advanced settings); alsoDefault also makes it the default for new phones.
+    void SetProfile(const DeviceProfile& p, bool alsoDefault);
 
     // User actions (UI thread).
     void Connect();
@@ -55,13 +59,13 @@ public:
     void SetFps(uint32_t fps);
     void SetQuality(uint32_t quality);
     void SetCodec(proto::Codec codec);  // applies on the next connection
-    void SetTransport(TransportMode mode);  // applies on the next connection
     void SetOrientation(bool portrait);
     void SetResolution(std::optional<Mode> mode);  // nullopt = automatic (native)
 
 private:
     void Run();
     void Tick();
+    void UpdateConnection();  // Tick() = UpdateConnection() + UpdateHelp()
     bool CheckDriver();
     void StartSession(std::unique_ptr<IConnection> conn);
     void ReapSession();
@@ -69,6 +73,7 @@ private:
     void SetMessage(const std::wstring& m, bool error);
     std::wstring FindApk() const;
     bool TryAoa(const PhoneDevice& dev, bool launch);
+    void UpdateHelp();
     bool AoaDriverInstalled();
 
     // Two locks, never nested: lock_ guards state/settings/policy; sessionLock_ guards session_'s lifetime.
@@ -76,7 +81,9 @@ private:
     mutable std::mutex lock_;
     mutable std::mutex sessionLock_;
     ControllerState state_;
-    AppSettings settings_;
+    AppSettings app_;
+    DeviceProfile profile_;
+    std::string profileSerial_;
 
     std::thread thread_;
     std::atomic<bool> running_{false};

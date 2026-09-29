@@ -40,8 +40,9 @@ public:
     // (the caller stops the adb server first). protocolOut receives the AOA version (1 or 2).
     static Status SwitchToAccessory(const UsbInterfaceInfo& adbInterface, int* protocolOut = nullptr);
 
-    // Opens a phone already in accessory mode. serial may be empty (first one found).
-    static Status Open(const std::string& serial, std::unique_ptr<IConnection>& out);
+    // Opens a phone already in accessory mode. serial may be empty (first one found). maxTransfer bounds every bulk
+    // transfer to the phone (its accessory read buffer; 16 KB on most kernels, configurable per phone).
+    static Status Open(const std::string& serial, std::unique_ptr<IConnection>& out, uint32_t maxTransfer = 16000);
 };
 
 }  // namespace celmon

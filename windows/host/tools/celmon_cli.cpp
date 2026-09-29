@@ -21,6 +21,7 @@
 #include "../src/transport/AdbTransport.h"
 #include "../src/transport/AoaTransport.h"
 #include "../src/util/Log.h"
+#include "DriverSetup.h"
 #include "TestPattern.h"
 #include "Verify.h"
 
@@ -283,6 +284,68 @@ static int CmdServe(int argc, char** argv) {
     return 0;
 }
 
+// ---- installer support (administrator) ----
+
+static const wchar_t kCertSubject[] = L"CelMonitor Local Driver Signing";
+
+static bool TrustCertificate(const std::wstring& cerPath) {
+    HANDLE f = CreateFileW(cerPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) { fwprintf(stderr, L"certificado não encontrado: %ls\n", cerPath.c_str()); return false; }
+    std::vector<BYTE> der(GetFileSize(f, nullptr));
+    DWORD got = 0;
+    ReadFile(f, der.data(), DWORD(der.size()), &got, nullptr);
+    CloseHandle(f);
+    PCCERT_CONTEXT cert = CertCreateCertificateContext(X509_ASN_ENCODING, der.data(), got);
+    if (!cert) { fwprintf(stderr, L"certificado inválido: %ls\n", cerPath.c_str()); return false; }
+    bool ok = true;
+    for (const wchar_t* storeName : {L"Root", L"TrustedPublisher"}) {
+        HCERTSTORE store = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0, CERT_SYSTEM_STORE_LOCAL_MACHINE, storeName);
+        if (!store || !CertAddCertificateContextToStore(store, cert, CERT_STORE_ADD_REPLACE_EXISTING, nullptr)) {
+            fwprintf(stderr, L"falha ao adicionar o certificado em %ls: %ls\n", storeName, driversetup::Err(GetLastError()).c_str());
+            ok = false;
+        }
+        if (store) CertCloseStore(store, 0);
+    }
+    CertFreeCertificateContext(cert);
+    return ok;
+}
+
+static void UntrustCertificate() {
+    for (const wchar_t* storeName : {L"Root", L"TrustedPublisher"}) {
+        HCERTSTORE store = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0, CERT_SYSTEM_STORE_LOCAL_MACHINE, storeName);
+        if (!store) continue;
+        PCCERT_CONTEXT c;
+        while ((c = CertFindCertificateInStore(store, X509_ASN_ENCODING, 0, CERT_FIND_SUBJECT_STR_W, kCertSubject, nullptr)) != nullptr)
+            CertDeleteCertificateFromStore(c);  // also frees c
+        CertCloseStore(store, 0);
+    }
+}
+
+// setup-drivers <dir>: dir has CelMonitorDriver.cer, CelMonIdd\CelMonIdd.inf and CelMonAoa\CelMonAoa.inf.
+// Exit code: 0 ok, 3010 ok but reboot required, 1 failure.
+static int CmdSetupDrivers(int argc, char** argv) {
+    if (argc < 1) { fprintf(stderr, "uso: setup-drivers <pasta-dos-drivers>\n"); return 2; }
+    std::wstring dir = Widen(argv[0]);
+    bool reboot = false;
+    printf("1/3 confiando no certificado de assinatura dos drivers...\n");
+    if (!TrustCertificate(dir + L"\\CelMonitorDriver.cer")) return 1;
+    printf("2/3 instalando o driver do monitor virtual...\n");
+    if (!driversetup::InstallIdd(dir + L"\\CelMonIdd\\CelMonIdd.inf", reboot)) return 1;
+    printf("3/3 instalando o driver USB do modo acessório...\n");
+    if (!driversetup::InstallPackage(dir + L"\\CelMonAoa\\CelMonAoa.inf", reboot)) return 1;
+    printf(reboot ? "drivers instalados; o Windows pede reinicialização.\n" : "drivers instalados.\n");
+    return reboot ? 3010 : 0;
+}
+
+static int CmdRemoveDrivers(int argc, char** argv) {
+    bool removeCert = argc > 0 && !strcmp(argv[0], "--remove-cert");
+    driversetup::RemoveIddDevices();
+    driversetup::RemovePackages({L"celmonidd.inf", L"celmonaoa.inf"});
+    if (removeCert) UntrustCertificate();
+    printf("drivers removidos%s.\n", removeCert ? " e certificado descartado" : "");
+    return 0;
+}
+
 // Animated test pattern on an existing monitor (e.g. the one created by CelMonitor.exe), for measuring fps/latency.
 static int CmdPattern(int argc, char** argv) {
     if (argc < 1) { fprintf(stderr, "uso: pattern <\\\\.\\DISPLAYn> [segundos]\n"); return 2; }
@@ -401,6 +464,8 @@ int main(int argc, char** argv) {
     if (!strcmp(argv[1], "serve")) return CmdServe(argc - 2, argv + 2);
     if (!strcmp(argv[1], "aoa-probe")) return CmdAoaProbe(argc - 2, argv + 2);
     if (!strcmp(argv[1], "pattern")) return CmdPattern(argc - 2, argv + 2);
+    if (!strcmp(argv[1], "setup-drivers")) return CmdSetupDrivers(argc - 2, argv + 2);
+    if (!strcmp(argv[1], "remove-drivers")) return CmdRemoveDrivers(argc - 2, argv + 2);
     fprintf(stderr, "comando desconhecido: %s\n", argv[1]);
     return 2;
 }

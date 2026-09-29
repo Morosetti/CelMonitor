@@ -1,6 +1,7 @@
 #include "Controller.h"
 
 #include "../util/Log.h"
+#include "PhoneDetect.h"
 
 namespace celmon {
 
@@ -20,7 +21,11 @@ const wchar_t* PhaseText(Phase p) {
     return L"";
 }
 
-Controller::Controller() : settings_(AppSettings::Load()) { wake_ = CreateEventW(nullptr, FALSE, FALSE, nullptr); }
+Controller::Controller() : app_(AppSettings::Load()) {
+    wake_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    profileSerial_ = app_.lastSerial;  // until a phone shows up, the UI edits the last phone's profile
+    profile_ = DeviceProfile::Load(profileSerial_);
+}
 
 Controller::~Controller() {
     Shutdown();
@@ -52,9 +57,23 @@ ControllerState Controller::State() const {
     return s;
 }
 
-AppSettings Controller::Settings() const {
+DeviceProfile Controller::Profile() const {
     std::lock_guard<std::mutex> lock(lock_);
-    return settings_;
+    return profile_;
+}
+
+std::string Controller::ProfileSerial() const {
+    std::lock_guard<std::mutex> lock(lock_);
+    return profileSerial_;
+}
+
+void Controller::SetProfile(const DeviceProfile& p, bool alsoDefault) {
+    std::lock_guard<std::mutex> lock(lock_);
+    profile_ = p;
+    profile_.Save(profileSerial_);
+    if (alsoDefault) profile_.SaveAsDefault();
+    aoaDisabledFor_.clear();  // transport options may have changed
+    aoaFailures_ = 0;
 }
 
 void Controller::SetPhase(Phase p, const std::wstring& status) {
@@ -99,8 +118,8 @@ void Controller::Disconnect() {
 void Controller::SetFps(uint32_t fps) {
     {
         std::lock_guard<std::mutex> lock(lock_);
-        settings_.session.fps = fps;
-        settings_.Save();
+        profile_.session.fps = fps;
+        profile_.Save(profileSerial_);
     }
     std::lock_guard<std::mutex> lock(sessionLock_);
     if (session_) session_->SetFps(fps);
@@ -109,8 +128,8 @@ void Controller::SetFps(uint32_t fps) {
 void Controller::SetQuality(uint32_t quality) {
     {
         std::lock_guard<std::mutex> lock(lock_);
-        settings_.session.quality = quality;
-        settings_.Save();
+        profile_.session.quality = quality;
+        profile_.Save(profileSerial_);
     }
     std::lock_guard<std::mutex> lock(sessionLock_);
     if (session_) session_->SetQuality(quality);
@@ -118,17 +137,17 @@ void Controller::SetQuality(uint32_t quality) {
 
 void Controller::SetCodec(proto::Codec codec) {
     std::lock_guard<std::mutex> lock(lock_);
-    settings_.session.codec = codec;
-    settings_.Save();
+    profile_.session.codec = codec;
+    profile_.Save(profileSerial_);
 }
 
 void Controller::SetOrientation(bool portrait) {
     {
         std::lock_guard<std::mutex> lock(lock_);
-        auto& s = settings_.session;
+        auto& s = profile_.session;
         s.portrait = portrait;
         if (s.mode && (s.mode->height > s.mode->width) != portrait) s.mode = Mode{s.mode->height, s.mode->width, 60};
-        settings_.Save();
+        profile_.Save(profileSerial_);
     }
     std::lock_guard<std::mutex> lock(sessionLock_);
     if (session_) session_->SetOrientation(portrait);
@@ -137,9 +156,9 @@ void Controller::SetOrientation(bool portrait) {
 void Controller::SetResolution(std::optional<Mode> mode) {
     {
         std::lock_guard<std::mutex> lock(lock_);
-        settings_.session.mode = mode;
-        if (mode) settings_.session.portrait = mode->height > mode->width;
-        settings_.Save();
+        profile_.session.mode = mode;
+        if (mode) profile_.session.portrait = mode->height > mode->width;
+        profile_.Save(profileSerial_);
     }
     Status s = Status::Ok();
     {
@@ -207,8 +226,12 @@ void Controller::StartSession(std::unique_ptr<IConnection> conn) {
         sessionEnded_ = true;
         SetEvent(wake_);
     };
-    AppSettings settings = Settings();
-    auto s = std::make_unique<HostSession>(std::move(conn), settings.session, ev);
+    SessionSettings settings;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        settings = profile_.session;
+    }
+    auto s = std::make_unique<HostSession>(std::move(conn), settings, ev);
     s->Start();
     {
         std::lock_guard<std::mutex> lock(sessionLock_);
@@ -281,9 +304,12 @@ bool Controller::AoaDriverInstalled() {
 // Direct USB (Android Open Accessory). Returns true when this tick is handled (session started, switch in progress
 // or a retry scheduled); false to continue with ADB.
 bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
+    uint32_t maxTransfer;
     {
         std::lock_guard<std::mutex> lock(lock_);
-        if (settings_.transport != TransportMode::Auto || aoaDisabledFor_ == dev.serial) return false;
+        if (profile_.transport == TransportMode::AdbOnly) return false;
+        if (profile_.transport == TransportMode::Auto && aoaDisabledFor_ == dev.serial) return false;
+        maxTransfer = profile_.usbMaxTransfer;
     }
     // 1) Phone already in accessory mode: open the bulk channel.
     for (auto& acc : AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA)) {
@@ -291,15 +317,15 @@ bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
         SetPhase(Phase::Connecting, L"Conectando ao " + dev.model + L" por USB direto...");
         if (launch) adb_.LaunchApp(dev.serial);  // usually already opened by Android when the accessory attached
         std::unique_ptr<IConnection> conn;
-        Status s = AoaTransport::Open(dev.serial, conn);
+        Status s = AoaTransport::Open(dev.serial, conn, maxTransfer);
         if (s.ok) {
             {
                 std::lock_guard<std::mutex> lock(lock_);
                 failures_ = 0;
                 launchAllowed_ = false;
-                if (settings_.lastSerial != dev.serial) {
-                    settings_.lastSerial = dev.serial;
-                    settings_.Save();
+                if (app_.lastSerial != dev.serial) {
+                    app_.lastSerial = dev.serial;
+                    app_.Save();
                 }
             }
             StartSession(std::move(conn));
@@ -321,16 +347,40 @@ bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
     if (!adbIf) return false;
 
     SetPhase(Phase::Connecting, L"Ativando a conexão USB direta (modo acessório)...");
-    adb_.StopServer();  // WinUSB is exclusive: adb must release the interface for a moment
+    const std::wstring adbInstance = adbIf->instance;
+    const UsbInterfaceInfo target = *adbIf;
     int protocol = 0;
-    Status s = AoaTransport::SwitchToAccessory(*adbIf, &protocol);
+    Status s = Status::Ok();
     bool appeared = false;
-    // Up to 20 s: the first time a phone enters accessory mode Windows installs the driver for it (~9 s measured).
-    for (int i = 0; s.ok && i < 100 && !appeared; ++i) {
-        Sleep(200);
-        appeared = !AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA).empty();
+    // Returns true if the phone ignored the request (still enumerated in normal mode after 3 s).
+    auto switchOnce = [&]() {
+        adb_.StopServer();  // WinUSB is exclusive: adb must release the interface for a moment
+        s = AoaTransport::SwitchToAccessory(target, &protocol);
+        bool ignored = false;
+        // Up to 20 s: the first time a phone enters accessory mode Windows installs the driver for it (~9 s measured).
+        for (ULONGLONG start = GetTickCount64(); s.ok && !appeared && GetTickCount64() - start < 20000;) {
+            Sleep(200);
+            appeared = !AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA).empty();
+            if (!appeared && GetTickCount64() - start > 3000) {
+                bool stillNormal = false;
+                for (auto& i : AoaTransport::Enumerate(GUID_DEVINTERFACE_ANDROID_ADB))
+                    if (i.instance == adbInstance) stillNormal = true;
+                if (stillNormal) { ignored = true; break; }  // a real switch drops the device off the bus at once
+            }
+        }
+        adb_.StartServer();
+        return ignored;
+    };
+    if (switchOnce() && !appeared) {
+        // Android refuses accessory mode while /dev/usb_accessory is still held (e.g. by an app that kept the
+        // accessory open across a cable pull). Stopping the app releases it; try once more.
+        Log::Warn("phone ignored the AOA request; restarting the app on the phone and retrying");
+        Sleep(1500);  // the restarted adb server needs a moment to see the phone again
+        adb_.ForceStopApp(dev.serial);
+        Sleep(1000);
+        switchOnce();
+        if (appeared) adb_.LaunchApp(dev.serial);
     }
-    adb_.StartServer();
     std::lock_guard<std::mutex> lock(lock_);
     if (appeared) {
         nextAttempt_ = 0;  // next tick opens the accessory
@@ -344,15 +394,59 @@ bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
     return true;  // adb server was restarted; the ADB attempt happens on the next tick
 }
 
-void Controller::SetTransport(TransportMode mode) {
+// First-steps guide: what the user has to do next, with brand-specific instructions when the phone is recognized.
+void Controller::UpdateHelp() {
+    Phase phase;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        phase = state_.phase;
+    }
+    std::wstring help;
+    switch (phase) {
+    case Phase::NoDriver:
+        help = L"O driver do monitor virtual não está instalado ou está parado.\nExecute o instalador do CelMonitor novamente.";
+        break;
+    case Phase::NoAdb:
+        help = L"O componente ADB não foi encontrado.\nExecute o instalador do CelMonitor novamente (ele baixa o ADB do Google; é preciso internet).";
+        break;
+    case Phase::WaitingDevice: {
+        auto phone = DetectUsbPhone();
+        if (phone && !phone->debuggingEnabled && !phone->accessoryMode) {
+            help = L"Encontramos um " + phone->brand + (phone->name.empty() ? L"" : L" (" + phone->name + L")") +
+                   L" no USB, mas a Depuração USB está desligada. Ative assim:\n" + DebuggingSteps(phone->brand);
+        } else {
+            help = L"1) Conecte o celular ao PC com um cabo USB de dados (alguns cabos só carregam).\n"
+                   L"2) Ative a Depuração USB no celular:\n" + DebuggingSteps(L"");
+        }
+        break;
+    }
+    case Phase::Unauthorized:
+        help = L"Olhe a tela do celular: toque em \"Permitir\" e marque \"Sempre permitir deste computador\".\n"
+               L"Se a pergunta não aparecer, desbloqueie o celular ou desconecte e reconecte o cabo.";
+        break;
+    case Phase::InstallingApp:
+        help = L"Instalando o app CelMonitor no celular. Se o celular pedir confirmação, aceite.";
+        break;
+    case Phase::WaitingApp:
+        help = L"Desbloqueie o celular e abra o app CelMonitor.\n"
+               L"Se você saiu do modo monitor no celular, toque em \"Voltar ao modo monitor\".";
+        break;
+    case Phase::Disconnected:
+        help = L"Clique em Conectar para voltar a usar o celular como monitor.";
+        break;
+    default:
+        break;
+    }
     std::lock_guard<std::mutex> lock(lock_);
-    settings_.transport = mode;
-    settings_.Save();
-    aoaDisabledFor_.clear();
-    aoaFailures_ = 0;
+    state_.help = help;
 }
 
 void Controller::Tick() {
+    UpdateConnection();
+    UpdateHelp();
+}
+
+void Controller::UpdateConnection() {
     ReapSession();
     {
         std::lock_guard<std::mutex> lock(sessionLock_);
@@ -374,7 +468,7 @@ void Controller::Tick() {
     {
         std::lock_guard<std::mutex> lock(lock_);
         userDisconnected = userDisconnected_;
-        lastSerial = settings_.lastSerial;
+        lastSerial = app_.lastSerial;
     }
     auto devices = adb_.ListDevices();
     const PhoneDevice* dev = nullptr;
@@ -411,6 +505,8 @@ void Controller::Tick() {
         nextAttempt_ = 0;
         state_.serial = dev->serial;
         state_.deviceModel = dev->model;
+        profileSerial_ = dev->serial;  // this phone's own settings from now on
+        profile_ = DeviceProfile::Load(dev->serial);
     }
     if (userDisconnected) {
         SetPhase(Phase::Disconnected, L"Desconectado. Clique em Conectar para usar o celular como monitor.");
@@ -424,6 +520,19 @@ void Controller::Tick() {
         launch = launchAllowed_;
     }
     if (TryAoa(*dev, launch)) return;
+    TransportMode transport;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        transport = profile_.transport;
+    }
+    if (transport == TransportMode::AoaOnly) {
+        // Profile forbids ADB: explain why the direct connection is not available instead of silently waiting.
+        SetPhase(Phase::WaitingApp, AoaDriverInstalled() ? L"USB direto indisponível: o celular não entrou no modo acessório"
+                                                         : L"USB direto indisponível: driver USB do CelMonitor não instalado");
+        std::lock_guard<std::mutex> lock(lock_);
+        nextAttempt_ = GetTickCount64() + 3000;
+        return;
+    }
     if (launch) SetPhase(Phase::Connecting, L"Conectando ao " + dev->model + L"...");
 
     std::unique_ptr<IConnection> conn;
@@ -434,9 +543,9 @@ void Controller::Tick() {
             std::lock_guard<std::mutex> lock(lock_);
             failures_ = 0;
             launchAllowed_ = false;
-            if (settings_.lastSerial != dev->serial) {
-                settings_.lastSerial = dev->serial;
-                settings_.Save();
+            if (app_.lastSerial != dev->serial) {
+                app_.lastSerial = dev->serial;
+                app_.Save();
             }
         }
         StartSession(std::move(conn));

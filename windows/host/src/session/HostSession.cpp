@@ -391,7 +391,8 @@ void HostSession::Handle(uint16_t type, const std::vector<uint8_t>& p) {
 
 uint32_t HostSession::BitrateFor(uint32_t w, uint32_t h) const {
     double factor = 0.25 + 1.5 * std::clamp<uint32_t>(settings_.quality, 1, 100) / 100.0;  // q50 -> 1.0x
-    return uint32_t(VideoPipeline::DefaultBitrateKbps(w, h, settings_.fps) * factor);
+    uint32_t kbps = uint32_t(VideoPipeline::DefaultBitrateKbps(w, h, settings_.fps) * factor);
+    return settings_.maxBitrateKbps ? std::min(kbps, settings_.maxBitrateKbps) : kbps;
 }
 
 void HostSession::OnHello(const Hello& h) {
@@ -477,7 +478,19 @@ void HostSession::OnHello(const Hello& h) {
         info_.displayName = gdi;
     }
 
+    // Windows restores the last resolution it used for this monitor (per EDID), which may not be what the profile
+    // asks for ("Automática" = the phone's native panel). Apply the wanted mode explicitly.
     auto current = display_.CurrentMode().value_or(modes[preferred]);
+    const Mode& wanted = modes[preferred];
+    if (current.width != wanted.width || current.height != wanted.height) {
+        Status ms = display_.SetMode(wanted);
+        if (ms.ok) {
+            Log::Info("virtual monitor mode %ux%u -> %ux%u (profile)", current.width, current.height, wanted.width, wanted.height);
+            current = wanted;
+        } else if (events_.onWarning) {
+            events_.onWarning(ms);
+        }
+    }
     PipelineConfig pc;
     pc.gdiName = gdi;
     pc.codec = settings_.codec;
@@ -517,6 +530,7 @@ void HostSession::OnStreamStart(uint32_t w, uint32_t h, const std::wstring& enco
     c.codec = settings_.codec;
     c.orientation = h > w ? 1 : 0;
     c.bitrateKbps = BitrateFor(w, h);
+    if (!settings_.decoderLowLatency) c.flags |= StreamConfig::NoVendorLowLatency;
     pipeline_.SetBitrate(c.bitrateKbps);
     Send(MsgType::StreamConfig, serialize(c));
     Changed();

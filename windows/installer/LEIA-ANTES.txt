@@ -1,0 +1,26 @@
+CelMonitor - use o celular Android como monitor adicional do Windows, pelo cabo USB.
+
+O que este instalador faz:
+
+1. Instala o programa CelMonitor para Windows e o app para Android (o app é instalado
+   no celular automaticamente, na primeira vez que ele for conectado).
+
+2. Instala dois drivers:
+   - "CelMonitor Virtual Display": cria o monitor extra que o Windows enxerga
+     (só aparece enquanto o celular está conectado);
+   - "CelMonitor USB": conexão USB direta com o celular (modo acessório Android).
+
+3. Passa a confiar no certificado "CelMonitor Local Driver Signing", usado para assinar
+   esses drivers. Ele só é usado para eles e é removido quando você desinstala o CelMonitor.
+   (Drivers de empresas usam certificados pagos da Microsoft; este projeto usa um certificado
+   próprio. Instale apenas se você confia na origem deste instalador.)
+
+4. Baixa o ADB (Android SDK Platform-Tools) direto do site do Google. É preciso internet
+   durante a instalação. O ADB está sujeito aos termos de uso do Google.
+
+O que você precisa fazer no celular (uma única vez):
+   - Ativar as "Opções do desenvolvedor" e a "Depuração USB".
+     O CelMonitor mostra o passo a passo para a marca do seu celular.
+   - Conectar o cabo e tocar em "Permitir" quando o celular perguntar.
+
+Requisitos: Windows 10 versão 2004 ou mais recente (64 bits) e Android 10 ou mais recente.

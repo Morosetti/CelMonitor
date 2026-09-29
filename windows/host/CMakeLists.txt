@@ -24,17 +24,18 @@ add_library(celmon_core STATIC
     src/session/HostSession.cpp
     src/app/Settings.cpp
     src/app/Controller.cpp
+    src/app/PhoneDetect.cpp
     src/util/ProcessStats.cpp
 )
 target_include_directories(celmon_core PUBLIC src ${REPO_ROOT}/common ${REPO_ROOT}/windows/shared)
 target_link_libraries(celmon_core PUBLIC setupapi d3d11 dxgi mf mfplat mfuuid avrt winmm ws2_32)
 
 # The app (Win32 UI)
-add_executable(CelMonitor WIN32 src/ui/main.cpp src/ui/MainWindow.cpp)
+add_executable(CelMonitor WIN32 src/ui/main.cpp src/ui/MainWindow.cpp src/ui/AdvancedDialog.cpp src/util/Autostart.cpp res/CelMonitor.rc)
 target_link_libraries(CelMonitor PRIVATE celmon_core comctl32 pdh shell32)
 
 add_executable(celmon-cli tools/celmon_cli.cpp)
-target_link_libraries(celmon-cli PRIVATE celmon_core dwmapi windowscodecs)
+target_link_libraries(celmon-cli PRIVATE celmon_core dwmapi windowscodecs newdev crypt32)
 
 add_executable(celmon-tests tests/protocol_tests.cpp)
 target_link_libraries(celmon-tests PRIVATE celmon_core)

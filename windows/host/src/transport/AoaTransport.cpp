@@ -86,10 +86,9 @@ public:
     // read fail with EINVAL (measured on a Mi Max 3), and zero-length packets are reported as end-of-file by older
     // kernels, so we never rely on them.
     bool WriteAll(const void* buf, size_t n) override {
-        constexpr size_t kMaxTransfer = 16000;
         auto* src = static_cast<const uint8_t*>(buf);
         while (n > 0) {
-            size_t chunk = std::min(n, kMaxTransfer);
+            size_t chunk = std::min<size_t>(n, maxTransfer_);
             if (chunk % maxPacket_ == 0) chunk -= 1;  // leaves at least one byte for a following short transfer
             ULONG sent = 0;
             if (!Transfer(false, const_cast<uint8_t*>(src), ULONG(chunk), &sent) || sent == 0) return false;
@@ -100,6 +99,7 @@ public:
     }
 
     void SetMaxPacket(USHORT size) { maxPacket_ = size ? size : 512; }
+    void SetMaxTransfer(uint32_t bytes) { maxTransfer_ = std::max<uint32_t>(bytes, 2u * maxPacket_); }
 
     void Close() override {
         if (closed_.exchange(true)) return;
@@ -128,6 +128,7 @@ private:
     HANDLE readEvent_, writeEvent_;
     std::atomic<bool> closed_{false};
     USHORT maxPacket_ = 512;
+    uint32_t maxTransfer_ = 16000;
     uint8_t buffer_[64 * 1024];
     size_t pos_ = 0, len_ = 0;
 };
@@ -326,7 +327,7 @@ Status AoaTransport::SwitchToAccessory(const UsbInterfaceInfo& adbInterface, int
     return Status::Ok();
 }
 
-Status AoaTransport::Open(const std::string& serial, std::unique_ptr<IConnection>& out) {
+Status AoaTransport::Open(const std::string& serial, std::unique_ptr<IConnection>& out, uint32_t maxTransfer) {
     auto list = Enumerate(GUID_DEVINTERFACE_CELMON_AOA);
     const UsbInterfaceInfo* pick = nullptr;
     for (auto& i : list)
@@ -371,6 +372,7 @@ Status AoaTransport::Open(const std::string& serial, std::unique_ptr<IConnection
     }
     auto conn = std::make_unique<WinUsbConnection>(o.file, o.usb, in, outPipe, L"USB direto (AOA)", leftover);
     conn->SetMaxPacket(outMaxPacket);
+    conn->SetMaxTransfer(maxTransfer);
     out = std::move(conn);
     Log::Info("AOA accessory opened (%s) in=0x%02X out=0x%02X", pick->serial.c_str(), in, outPipe);
     return Status::Ok();

@@ -1,8 +1,10 @@
 package com.celmonitor.transport
 
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
 import android.os.Build
@@ -28,9 +30,29 @@ class AccessorySource(private val context: Context) : ConnectionSource {
     @Volatile private var pending: Connection? = null
     private var permissionRequestedFor: UsbAccessory? = null
 
+    // Last USB state reported by the system (sticky ACTION_USB_STATE broadcast).
+    @Volatile private var accessoryOnline = false
+    private val stateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) {
+            accessoryOnline = intent.getBooleanExtra("connected", false) && intent.getBooleanExtra("configured", false) &&
+                intent.getBooleanExtra("accessory", false)
+            synchronized(lock) { lock.notifyAll() }
+        }
+    }
+
+    init {
+        // Hidden but stable since Android 4: "android.hardware.usb.action.USB_STATE" (sticky, system-sent).
+        val filter = IntentFilter("android.hardware.usb.action.USB_STATE")
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(stateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        else context.registerReceiver(stateReceiver, filter)
+    }
+
     override fun accept(): Connection? {
         while (!closed) {
-            val acc = usb.accessoryList?.firstOrNull { it.manufacturer == MANUFACTURER && it.model == MODEL }
+            // Only open while the accessory function is really online. A read started while it is offline (e.g. right
+            // after the cable is pulled, when the accessory is still listed) blocks in the kernel forever and keeps
+            // /dev/usb_accessory busy — then Android ignores the next "start accessory" request from the PC.
+            val acc = if (accessoryOnline) usb.accessoryList?.firstOrNull { it.manufacturer == MANUFACTURER && it.model == MODEL } else null
             if (acc == null) {
                 permissionRequestedFor = null
                 waitABit()
@@ -78,6 +100,7 @@ class AccessorySource(private val context: Context) : ConnectionSource {
 
     override fun close() {
         closed = true
+        runCatching { context.unregisterReceiver(stateReceiver) }
         pending?.close()  // unblocks a read waiting for the PC's sync marker
         synchronized(lock) { lock.notifyAll() }
     }

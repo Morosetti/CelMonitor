@@ -16,7 +16,7 @@ $root = Resolve-Path "$PSScriptRoot\.."
 
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $vs) { throw "Visual Studio Build Tools com C++ nao encontrado (veja docs/COMPILAR.md)." }
+if (-not $vs) { throw "Visual Studio Build Tools com C++ nao encontrado (veja docs/DESENVOLVIMENTO.md)." }
 $msbuild = Join-Path $vs "MSBuild\Current\Bin\amd64\MSBuild.exe"   # 64-bit: the WDK InfVerif task needs it
 $cmake = Join-Path $vs "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
 

@@ -30,6 +30,7 @@ object Proto {
     const val FRAME_KEY = 1 shl 0
     const val FRAME_CODEC_CONFIG = 1 shl 1
     const val ACK_RENDERED = 1
+    const val CONFIG_NO_VENDOR_LOW_LATENCY = 1  // StreamConfig.flags bit0
 
     fun validDimension(v: Int) = v in MIN_DIMENSION..MAX_DIMENSION
     fun validFps(v: Int) = v in 1..MAX_FPS

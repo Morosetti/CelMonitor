@@ -87,6 +87,8 @@ Uma mudança de resolução/codec/orientação gera novo `STREAM_CONFIG` com `st
 
 `u32 streamId, u32 width, u32 height, u16 fps, u8 codec (1=H.264, 2=H.265, 3=AV1), u8 orientation (0=paisagem, 1=retrato), u32 bitrateKbps, u32 flags`
 
+`flags`: bit0 `NO_VENDOR_LOW_LATENCY` — o celular não deve usar as chaves de baixa latência específicas do fabricante no decoder (opção do perfil do celular, para decoders que se comportam mal com elas). Bits desconhecidos são ignorados.
+
 ### 0x0004 STREAM_READY (cliente → host), 8 bytes
 
 `u32 streamId, u32 status (0 = ok; ≠0 = erro de decoder, ver códigos)`

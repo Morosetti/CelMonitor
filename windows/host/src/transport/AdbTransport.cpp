@@ -258,6 +258,11 @@ void AdbTransport::LaunchApp(const std::string& serial) {
     Run(L"-s " + Widen(serial) + L" shell am start -n " + Widen(kActivity), o);
 }
 
+void AdbTransport::ForceStopApp(const std::string& serial) {
+    std::string o;
+    Run(L"-s " + Widen(serial) + L" shell am force-stop " + Widen(kPackage), o);
+}
+
 void AdbTransport::Forget(const std::string& serial) {
     if (preparedSerial_ == serial) {
         preparedSerial_.clear();

@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import com.celmonitor.display.DeviceDisplay
+import com.celmonitor.protocol.Proto
 import com.celmonitor.protocol.StreamConfig
 import com.celmonitor.protocol.VideoFrameHeader
 import java.util.ArrayDeque
@@ -54,9 +55,10 @@ class VideoDecoder(
         name = info.name
         val c = MediaCodec.createByCodecName(info.name)
         c.setCallback(callback, handler)
+        val allowVendorKeys = config.flags and Proto.CONFIG_NO_VENDOR_LOW_LATENCY == 0  // per-phone option on the PC
         try {
-            c.configure(buildFormat(info, lowLatency = true), surface, null, 0)
-            lowLatencyEnabled = true
+            c.configure(buildFormat(info, lowLatency = allowVendorKeys), surface, null, 0)
+            lowLatencyEnabled = allowVendorKeys
         } catch (e: Exception) {
             // Some decoders reject vendor keys; fall back to a plain configuration.
             Log.w(TAG, "low-latency configure failed on ${info.name}, retrying plain", e)

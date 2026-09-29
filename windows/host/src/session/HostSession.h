@@ -21,6 +21,8 @@ struct SessionSettings {
     uint32_t quality = 50;          // 1..100, scales the bitrate
     bool portrait = false;          // orientation of the virtual monitor
     std::optional<Mode> mode;       // explicit resolution (must be one the phone supports)
+    bool decoderLowLatency = true;  // phone may use vendor low-latency decoder keys (some decoders misbehave)
+    uint32_t maxBitrateKbps = 0;    // 0 = automatic
 };
 
 enum class SessionState { Handshaking, CreatingMonitor, Streaming, Ended };

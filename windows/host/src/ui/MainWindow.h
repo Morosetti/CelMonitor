@@ -2,6 +2,7 @@
 #pragma once
 
 #include <windows.h>
+#include <shellapi.h>
 
 #include <map>
 #include <string>
@@ -14,8 +15,12 @@ namespace celmon {
 
 class MainWindow {
 public:
+    static constexpr UINT kMsgTray = WM_APP + 1;  // tray icon notifications
+    static constexpr UINT kMsgExit = WM_APP + 2;  // posted by "CelMonitor.exe --exit" (installer, scripts)
+
     explicit MainWindow(Controller& controller) : controller_(controller) {}
-    bool Create(HINSTANCE instance, int show);
+    // startHidden: only the tray icon (used when starting with Windows).
+    bool Create(HINSTANCE instance, int show, bool startHidden);
     HWND Handle() const { return hwnd_; }
 
 private:
@@ -30,6 +35,12 @@ private:
     void SelectCombo(int id, int index);
     int Scale(int v) const { return MulDiv(v, dpi_, 96); }
     void RecreateFonts();
+    NOTIFYICONDATAW TrayData() const;
+    void AddTrayIcon();
+    void UpdateTrayTip(const std::wstring& status);
+    void ShowFromTray();
+    void ShowTrayMenu();
+    void ExitApp();
 
     Controller& controller_;
     HWND hwnd_ = nullptr;
@@ -43,6 +54,10 @@ private:
     bool messageIsError_ = false;
     ProcessStats stats_;
     ULONGLONG lastStatsSample_ = 0;
+    UINT taskbarCreated_ = 0;
+    bool trayNotified_ = false;
+    bool exiting_ = false;
+    std::wstring trayTip_;
 };
 
 }  // namespace celmon
