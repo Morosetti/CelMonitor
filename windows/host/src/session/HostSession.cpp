@@ -203,12 +203,14 @@ void HostSession::ReaderLoop() {
     if (writer_.joinable() && writer_.get_id() != std::this_thread::get_id()) writer_.join();
     conn_->Close();
     std::wstring why;
+    bool byPhoneUser;
     {
         std::lock_guard<std::mutex> lock(lock_);
         why = endReason_;
+        byPhoneUser = endedByPhoneUser_;
     }
     Changed();
-    if (events_.onEnded) events_.onEnded(why);
+    if (events_.onEnded) events_.onEnded(why, byPhoneUser);
     CoUninitialize();
 }
 
@@ -349,6 +351,10 @@ void HostSession::Handle(uint16_t type, const std::vector<uint8_t>& p) {
         break;  // phase 2
     case MsgType::Disconnect: {
         auto m = parseDisconnect(d, n);
+        if (m && m->reason == DisconnectReason::Normal) {
+            std::lock_guard<std::mutex> lock(lock_);
+            endedByPhoneUser_ = true;
+        }
         std::wstring why = m && !m->message.empty() ? Wide(m->message) : DisconnectText(m ? m->reason : DisconnectReason::Normal);
         End(m ? m->reason : DisconnectReason::Normal, L"celular: " + why, false);
         break;

@@ -83,6 +83,7 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
 
     private fun showStatus(title: String, detail: String, error: String?) {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        showSystemBars()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         videoFrame.visibility = View.GONE
         menuButton.visibility = View.GONE
@@ -106,8 +107,13 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
         menuButton.visibility = View.VISIBLE
     }
 
+    /**
+     * Hides the status/navigation bars AND lays the content out under them. Hiding alone keeps the space reserved,
+     * which shrank the video (black bars on a phone whose aspect matches the stream exactly).
+     */
     private fun hideSystemBars() {
         if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
             window.insetsController?.let {
                 it.hide(WindowInsets.Type.systemBars())
                 it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -115,7 +121,18 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE)
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+        }
+    }
+
+    private fun showSystemBars() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(true)
+            window.insetsController?.show(WindowInsets.Type.systemBars())
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         }
     }
 

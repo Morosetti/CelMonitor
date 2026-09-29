@@ -228,7 +228,7 @@ static int CmdServe(int argc, char** argv) {
     std::wstring endReason;
     HostSession::Events ev;
     ev.onWarning = [](const Status& w) { fwprintf(stderr, L"aviso: %ls\n", w.message.c_str()); };
-    ev.onEnded = [&](const std::wstring& why) { endReason = why; ended = true; };
+    ev.onEnded = [&](const std::wstring& why, bool) { endReason = why; ended = true; };
     HostSession session(std::move(conn), settings, ev);
     session.Start();
     SetConsoleCtrlHandler([](DWORD) -> BOOL { g_stop = true; return TRUE; }, TRUE);

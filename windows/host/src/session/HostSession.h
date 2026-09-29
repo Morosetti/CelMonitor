@@ -43,7 +43,8 @@ public:
     struct Events {
         std::function<void()> onChanged;                    // info changed (state/stats); any thread
         std::function<void(const Status&)> onWarning;        // non-fatal problem to show
-        std::function<void(const std::wstring& why)> onEnded;
+        // byPhoneUser: the user left monitor mode on the phone (don't reopen the app automatically).
+        std::function<void(const std::wstring& why, bool byPhoneUser)> onEnded;
     };
 
     HostSession(std::unique_ptr<IConnection> conn, SessionSettings settings, Events events);
@@ -95,6 +96,7 @@ private:
     mutable std::mutex lock_;       // guards info_ and the stream state below
     SessionInfo info_;
     std::wstring endReason_;
+    bool endedByPhoneUser_ = false;
     uint32_t streamId_ = 0;
     bool streamReady_ = false;
     uint32_t lastFrameSent_ = 0, lastFrameAcked_ = 0;

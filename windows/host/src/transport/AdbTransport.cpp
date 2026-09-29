@@ -210,7 +210,9 @@ std::optional<SOCKET> AdbTransport::TryConnect(uint16_t port) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+    lastConnectRefused_ = false;
     if (connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+        lastConnectRefused_ = true;  // nothing listens locally: the adb forward is gone (adb server restarted)
         closesocket(s);
         return std::nullopt;
     }
@@ -232,43 +234,63 @@ std::optional<SOCKET> AdbTransport::TryConnect(uint16_t port) {
     return std::nullopt;
 }
 
-Status AdbTransport::Connect(const std::string& serial, std::unique_ptr<IConnection>& out) {
+void AdbTransport::Forget(const std::string& serial) {
+    if (preparedSerial_ == serial) {
+        preparedSerial_.clear();
+        preparedPort_ = 0;
+    }
+}
+
+Status AdbTransport::Connect(const std::string& serial, std::unique_ptr<IConnection>& out, bool launchApp, bool* appMissing) {
+    if (appMissing) *appMissing = false;
     std::wstring dev = L"-s " + Widen(serial) + L" ";
     std::string o;
-    Run(dev + L"shell pm path " + Widen(kPackage), o);
-    if (o.find("package:") == std::string::npos)
-        return Status::Error(L"O app CelMonitor não está instalado no celular.");
-
-    // Drop forwards left by previous sessions of ours (never touch other tools' forwards).
-    Run(L"forward --list", o);
-    std::istringstream fl(o);
-    for (std::string l; std::getline(fl, l);) {
-        std::istringstream f(l);
-        std::string ser, local, remote;
-        f >> ser >> local >> remote;
-        if (ser == serial && remote == std::string("localabstract:") + kSocketName) {
-            std::string ignored;
-            Run(dev + L"forward --remove " + Widen(local), ignored);
+    // App check + forward only once per phone; background polling then costs a single local TCP connect.
+    if (preparedSerial_ != serial || !preparedPort_) {
+        Run(dev + L"shell pm path " + Widen(kPackage), o);
+        if (o.find("package:") == std::string::npos) {
+            if (appMissing) *appMissing = true;
+            return Status::Error(L"O app CelMonitor não está instalado no celular.");
         }
+        // Drop forwards left by previous sessions of ours (never touch other tools' forwards).
+        Run(L"forward --list", o);
+        std::istringstream fl(o);
+        for (std::string l; std::getline(fl, l);) {
+            std::istringstream f(l);
+            std::string ser, local, remote;
+            f >> ser >> local >> remote;
+            if (ser == serial && remote == std::string("localabstract:") + kSocketName) {
+                std::string ignored;
+                Run(dev + L"forward --remove " + Widen(local), ignored);
+            }
+        }
+        if (Run(dev + L"forward tcp:0 localabstract:" + Widen(kSocketName), o) != 0)
+            return Status::Error(L"adb forward falhou: " + Widen(Trim(o)));
+        int p = atoi(Trim(o).c_str());
+        if (p <= 0 || p > 65535) return Status::Error(L"adb forward devolveu uma porta inválida: " + Widen(Trim(o)));
+        preparedSerial_ = serial;
+        preparedPort_ = uint16_t(p);
     }
-    if (Run(dev + L"forward tcp:0 localabstract:" + Widen(kSocketName), o) != 0)
-        return Status::Error(L"adb forward falhou: " + Widen(Trim(o)));
-    int port = atoi(Trim(o).c_str());
-    if (port <= 0 || port > 65535) return Status::Error(L"adb forward devolveu uma porta inválida: " + Widen(Trim(o)));
+    uint16_t port = preparedPort_;
 
-    auto sock = TryConnect(uint16_t(port));
+    auto sock = TryConnect(port);
+    if (!sock && lastConnectRefused_) Forget(serial);
+    if (!sock && !launchApp) return Status::Error(L"O app no celular não está em modo monitor.");
     if (!sock) {
         // App not running (or not listening yet): open it and retry for a few seconds.
         Log::Info("app not listening; starting %s", kActivity);
         Run(dev + L"shell am start -n " + Widen(kActivity), o);
         for (int i = 0; i < 8 && !sock; ++i) {
             Sleep(500);
-            sock = TryConnect(uint16_t(port));
+            sock = TryConnect(port);
         }
     }
-    if (!sock) return Status::Error(L"O app no celular não respondeu. Abra o CelMonitor no celular e mantenha a tela ligada.");
+    if (!sock) {
+        Forget(serial);  // the forward may be stale (adb restarted); redo it next time
+        return Status::Error(L"O app no celular não respondeu. Desbloqueie o celular e mantenha a tela ligada.");
+    }
     out = std::make_unique<SocketConnection>(*sock, L"USB (ADB)");
-    Log::Info("connected to %s via adb (port %d)", serial.c_str(), port);
+    Log::Info("connected to %s via adb (port %u)", serial.c_str(), unsigned(port));
     return Status::Ok();
 }
 
