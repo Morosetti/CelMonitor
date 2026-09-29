@@ -157,6 +157,25 @@ Responder na hora evita que a espera do ciclo de 1 s entre na medida de RTT.
 | 6 | DECODER_ERROR |
 | 7 | SHUTDOWN |
 
+## Sincronização do USB acessório (AOA)
+
+Com ADB cada conexão é um socket TCP novo. No modo acessório USB o canal bulk é **um só e sobrevive entre sessões**: bytes de uma tentativa anterior (um HELLO antigo, o final cortado de um quadro de vídeo) podem continuar na fila. Por isso, antes do protocolo, o transporte AOA faz uma sincronização com marcadores de 16 bytes (tag ASCII de 8 bytes + `u64` nonce aleatório, little-endian):
+
+```
+PC                                            Celular
+ | -- CELMSYNC(n) a cada 250 ms ---------------> |  descarta tudo até achar um CELMSYNC
+ | <----------------------------- CELMSACK(n) -- |  responde UMA vez por nonce
+ |  (descarta tudo até achar CELMSACK(n))        |
+ | -- CELMSDON(n) -----------------------------> |  só aceita DONE do último nonce respondido
+ | <------------------------------------ HELLO --|  protocolo normal a partir daqui
+```
+
+Regras do transporte AOA (limitações medidas no driver `f_accessory` do Android):
+
+- O PC nunca envia transferências maiores que 16.000 bytes nem de tamanho múltiplo de 512; toda transferência termina num pacote curto. Não se usam pacotes de tamanho zero (kernels antigos os entregam como fim de arquivo).
+- O celular lê sempre em blocos de exatamente 16 KB e **nunca chama `available()`** no descritor (`FIONREAD` não é suportado e falha com `EINVAL`).
+- Como um app morto no celular deixa as escritas do PC bloqueadas para sempre, o PC detecta o timeout de 5 s num watchdog independente e aborta as transferências pendentes.
+
 ## Limites
 
 | Item | Limite |

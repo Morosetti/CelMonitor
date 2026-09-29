@@ -79,6 +79,9 @@ void Controller::Connect() {
         failures_ = 0;
         nextAttempt_ = 0;
         installTried_ = false;
+        aoaFailures_ = 0;
+        aoaDisabledFor_.clear();
+        nextAoaDriverCheck_ = 0;  // the driver may have just been installed
         state_.message.clear();
     }
     SetEvent(wake_);
@@ -232,7 +235,19 @@ void Controller::ReapSession() {
         byPhoneUser = sessionEndByPhoneUser_;
         byPcUser = userDisconnected_;
     }
+    SessionInfo last = s->Info();
     s.reset();  // joins the session threads; the monitor is already removed
+    bool gotHello = !last.model.empty();
+    bool wasAoa = last.transport.find(L"AOA") != std::wstring::npos;
+    if (wasAoa && !byPcUser && !byPhoneUser) {
+        std::lock_guard<std::mutex> lock(lock_);
+        if (gotHello) aoaFailures_ = 0;
+        else if (++aoaFailures_ >= 3) {
+            // The accessory opens but the app never answers (old app version, permission refused...): use ADB.
+            aoaDisabledFor_ = knownSerial_;
+            Log::Warn("USB accessory failed %d times; falling back to ADB for %s", aoaFailures_, knownSerial_.c_str());
+        }
+    }
     char buf[512];
     WideCharToMultiByte(CP_UTF8, 0, why.c_str(), -1, buf, sizeof(buf), nullptr, nullptr);
     Log::Info("session reaped: %s (phone user=%d, pc user=%d)", buf, int(byPhoneUser), int(byPcUser));
@@ -253,6 +268,88 @@ void Controller::ReapSession() {
         state_.message = L"Conexão encerrada: " + why;
         state_.messageIsError = true;
     }
+}
+
+bool Controller::AoaDriverInstalled() {
+    if (GetTickCount64() >= nextAoaDriverCheck_) {
+        aoaDriver_ = AoaTransport::DriverInstalled();
+        nextAoaDriverCheck_ = GetTickCount64() + 30000;
+    }
+    return aoaDriver_;
+}
+
+// Direct USB (Android Open Accessory). Returns true when this tick is handled (session started, switch in progress
+// or a retry scheduled); false to continue with ADB.
+bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        if (settings_.transport != TransportMode::Auto || aoaDisabledFor_ == dev.serial) return false;
+    }
+    // 1) Phone already in accessory mode: open the bulk channel.
+    for (auto& acc : AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA)) {
+        if (!acc.serial.empty() && acc.serial != dev.serial) continue;
+        SetPhase(Phase::Connecting, L"Conectando ao " + dev.model + L" por USB direto...");
+        if (launch) adb_.LaunchApp(dev.serial);  // usually already opened by Android when the accessory attached
+        std::unique_ptr<IConnection> conn;
+        Status s = AoaTransport::Open(dev.serial, conn);
+        if (s.ok) {
+            {
+                std::lock_guard<std::mutex> lock(lock_);
+                failures_ = 0;
+                launchAllowed_ = false;
+                if (settings_.lastSerial != dev.serial) {
+                    settings_.lastSerial = dev.serial;
+                    settings_.Save();
+                }
+            }
+            StartSession(std::move(conn));
+            return true;
+        }
+        std::lock_guard<std::mutex> lock(lock_);
+        state_.message = s.message;
+        state_.messageIsError = true;
+        if (++aoaFailures_ >= 3) aoaDisabledFor_ = dev.serial;
+        nextAttempt_ = GetTickCount64() + 2000;
+        return true;
+    }
+    // 2) Normal mode: switch to accessory mode through the ADB interface, if the PC has the driver for it.
+    if (!AoaDriverInstalled()) return false;
+    const UsbInterfaceInfo* adbIf = nullptr;
+    auto adbIfs = AoaTransport::Enumerate(GUID_DEVINTERFACE_ANDROID_ADB);
+    for (auto& i : adbIfs)
+        if (i.serial == dev.serial && !(i.vid == 0x18D1 && (i.pid == 0x2D00 || i.pid == 0x2D01))) adbIf = &i;
+    if (!adbIf) return false;
+
+    SetPhase(Phase::Connecting, L"Ativando a conexão USB direta (modo acessório)...");
+    adb_.StopServer();  // WinUSB is exclusive: adb must release the interface for a moment
+    int protocol = 0;
+    Status s = AoaTransport::SwitchToAccessory(*adbIf, &protocol);
+    bool appeared = false;
+    // Up to 20 s: the first time a phone enters accessory mode Windows installs the driver for it (~9 s measured).
+    for (int i = 0; s.ok && i < 100 && !appeared; ++i) {
+        Sleep(200);
+        appeared = !AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA).empty();
+    }
+    adb_.StartServer();
+    std::lock_guard<std::mutex> lock(lock_);
+    if (appeared) {
+        nextAttempt_ = 0;  // next tick opens the accessory
+        SetEvent(wake_);
+        return true;
+    }
+    aoaDisabledFor_ = dev.serial;
+    state_.message = (s.ok ? std::wstring(L"O celular não entrou no modo acessório USB") : s.message) + L". Usando ADB.";
+    state_.messageIsError = false;
+    Log::Warn("AOA switch failed (protocol %d); using ADB", protocol);
+    return true;  // adb server was restarted; the ADB attempt happens on the next tick
+}
+
+void Controller::SetTransport(TransportMode mode) {
+    std::lock_guard<std::mutex> lock(lock_);
+    settings_.transport = mode;
+    settings_.Save();
+    aoaDisabledFor_.clear();
+    aoaFailures_ = 0;
 }
 
 void Controller::Tick() {
@@ -296,6 +393,8 @@ void Controller::Tick() {
         launchAllowed_ = true;
         failures_ = 0;
         installTried_ = false;
+        aoaFailures_ = 0;
+        aoaDisabledFor_.clear();
         state_.serial.clear();
         state_.deviceModel.clear();
         state_.phase = unauthorized ? Phase::Unauthorized : Phase::WaitingDevice;
@@ -324,6 +423,7 @@ void Controller::Tick() {
         if (GetTickCount64() < nextAttempt_) return;
         launch = launchAllowed_;
     }
+    if (TryAoa(*dev, launch)) return;
     if (launch) SetPhase(Phase::Connecting, L"Conectando ao " + dev->model + L"...");
 
     std::unique_ptr<IConnection> conn;

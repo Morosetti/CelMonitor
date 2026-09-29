@@ -79,7 +79,7 @@ private:
     SessionSettings settings_;
     Events events_;
 
-    std::thread reader_, writer_;
+    std::thread reader_, writer_, watchdog_;
     std::mutex queueLock_;
     std::condition_variable queueCv_;
     std::deque<std::vector<uint8_t>> queue_;

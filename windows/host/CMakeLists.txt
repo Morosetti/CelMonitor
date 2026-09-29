@@ -20,6 +20,7 @@ add_library(celmon_core STATIC
     src/encoder/MfEncoder.cpp
     src/pipeline/VideoPipeline.cpp
     src/transport/AdbTransport.cpp
+    src/transport/AoaTransport.cpp
     src/session/HostSession.cpp
     src/app/Settings.cpp
     src/app/Controller.cpp

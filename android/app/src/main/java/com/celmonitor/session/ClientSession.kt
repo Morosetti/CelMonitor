@@ -91,6 +91,7 @@ class ClientSession(
             enqueue(MsgType.HELLO, Codecs.encode(hello))
             while (running) {
                 val msg = channel.read()
+                messagesRead++
                 lastReceivedMs = SystemClock.elapsedRealtime()
                 if (handle(msg)) { remote = true; reason = lastRemoteReason; message = lastRemoteMessage; break }
             }
@@ -99,6 +100,7 @@ class ClientSession(
             reason = DisconnectReason.PROTOCOL_ERROR; message = e.message ?: "erro de protocolo"
             sendDirect(MsgType.DISCONNECT, Codecs.encode(Disconnect(reason, message)))
         } catch (e: IOException) {
+            if (localEnd == null) Log.w(TAG, "connection lost via ${connection.description} after $messagesRead messages", e)
             val local = localEnd
             if (local != null) { reason = local.first; message = local.second }
             else { reason = DisconnectReason.TIMEOUT; message = if (e is EOFException) "conexão encerrada pelo PC" else "conexão perdida: ${e.message}" }
@@ -107,6 +109,8 @@ class ClientSession(
             events.onEnded(reason, message, remote)
         }
     }
+
+    private var messagesRead = 0L
 
     /** Set when this side ends the session, so the reader reports the right reason. */
     @Volatile private var localEnd: Pair<Int, String>? = null
@@ -126,7 +130,10 @@ class ClientSession(
     /** @return true if the host asked to disconnect. */
     private fun handle(msg: Message): Boolean {
         val p = msg.payload
-        if (!handshakeDone && msg.type != MsgType.HELLO_ACK && msg.type != MsgType.DISCONNECT && msg.type != MsgType.NOTICE)
+        // HEARTBEAT is tolerated early: with USB accessory a heartbeat of a previous PC attempt can still sit in the
+        // USB buffer when the app opens the accessory.
+        if (!handshakeDone && msg.type != MsgType.HELLO_ACK && msg.type != MsgType.DISCONNECT && msg.type != MsgType.NOTICE &&
+            msg.type != MsgType.HEARTBEAT)
             throw ProtocolException("message ${msg.type} before handshake")
         when (msg.type) {
             MsgType.HELLO_ACK -> {

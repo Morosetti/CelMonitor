@@ -33,6 +33,16 @@ if ($Driver) {
     }
     & $msbuild "$drv\CelMonIdd\CelMonIdd.vcxproj" /p:Configuration=$Configuration /p:Platform=x64 /nologo /v:m
     if ($LASTEXITCODE) { throw "build do driver falhou" }
+
+    # WinUSB package for phones in accessory mode (INF only; the catalog is generated here).
+    $aoaOut = Join-Path $root "build\driver\$Configuration\CelMonAoa"
+    New-Item -ItemType Directory -Force $aoaOut | Out-Null
+    Copy-Item "$drv\CelMonAoa\CelMonAoa.inf" $aoaOut -Force
+    Remove-Item "$aoaOut\*.cat" -ErrorAction SilentlyContinue
+    $inf2cat = Get-ChildItem "$drv\packages" -Recurse -Filter Inf2Cat.exe | Select-Object -First 1 -ExpandProperty FullName
+    & $inf2cat /driver:$aoaOut /os:10_X64 | Out-Null
+    if (-not (Test-Path "$aoaOut\celmonaoa.cat")) { throw "Inf2Cat falhou para CelMonAoa.inf" }
+    Write-Host "CelMonAoa -> $aoaOut"
 }
 
 if ($App) {

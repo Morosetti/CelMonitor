@@ -7,8 +7,11 @@
 
 namespace celmon {
 
+enum class TransportMode { Auto, AdbOnly };  // Auto: USB accessory (AOA) when possible, ADB otherwise
+
 struct AppSettings {
     SessionSettings session;
+    TransportMode transport = TransportMode::Auto;
     bool autoConnect = true;
     std::string lastSerial;
 

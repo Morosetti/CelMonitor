@@ -20,7 +20,7 @@ enum : int {
     // group boxes
     GrpConn = 100, GrpMonitor, GrpPerf,
     // connection
-    LblStatus = 200, ValStatus, LblPhone, ValPhone, LblLink, ValLink, LblMonitor, ValMonitor, BtnConnect,
+    LblStatus = 200, ValStatus, LblPhone, ValPhone, LblLink, ValLink, LblMonitor, ValMonitor, BtnConnect, LblTransport, CmbTransport,
     // monitor settings
     LblRes = 300, CmbRes, LblOrient, CmbOrient, LblFps, CmbFps, LblQuality, CmbQuality, LblCodec, CmbCodec, NoteCodec,
     // performance
@@ -106,7 +106,7 @@ void MainWindow::CreateControls() {
     make(GrpMonitor, L"BUTTON", L"Monitor no celular", BS_GROUPBOX);
     make(GrpPerf, L"BUTTON", L"Desempenho", BS_GROUPBOX);
     const std::pair<int, const wchar_t*> labels[] = {
-        {LblStatus, L"Status:"}, {LblPhone, L"Celular:"}, {LblLink, L"Conexão USB:"}, {LblMonitor, L"Monitor virtual:"},
+        {LblStatus, L"Status:"}, {LblPhone, L"Celular:"}, {LblLink, L"Conexão USB:"}, {LblMonitor, L"Monitor virtual:"}, {LblTransport, L"Modo USB:"},
         {LblRes, L"Resolução:"}, {LblOrient, L"Orientação:"}, {LblFps, L"FPS máximo:"}, {LblQuality, L"Qualidade:"},
         {LblCodec, L"Codec:"}, {LblCurFps, L"FPS atual:"}, {LblLatency, L"Latência aprox.:"}, {LblRate, L"Taxa:"},
         {LblEncode, L"Encode:"}, {LblRtt, L"RTT USB:"}, {LblCpu, L"CPU / GPU:"}, {LblEncoder, L"Encoder:"},
@@ -115,7 +115,7 @@ void MainWindow::CreateControls() {
     for (int id : {ValStatus, ValPhone, ValLink, ValMonitor, ValCurFps, ValLatency, ValRate, ValEncode, ValRtt, ValCpu, ValEncoder})
         make(id, L"STATIC", L"—", SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX);
     make(NoteCodec, L"STATIC", L"(próxima conexão)", SS_LEFT);
-    for (int id : {CmbRes, CmbOrient, CmbFps, CmbQuality, CmbCodec}) make(id, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP);
+    for (int id : {CmbRes, CmbOrient, CmbFps, CmbQuality, CmbCodec, CmbTransport}) make(id, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP);
     make(BtnConnect, L"BUTTON", L"Conectar", BS_PUSHBUTTON | WS_TABSTOP);
     make(ValMessage, L"STATIC", L"", SS_LEFT | SS_NOPREFIX);
     make(BtnLogs, L"BUTTON", L"Abrir pasta de logs", BS_PUSHBUTTON | WS_TABSTOP);
@@ -133,6 +133,8 @@ void MainWindow::CreateControls() {
         if (std::abs(int(s.session.quality) - kQualities[i]) < std::abs(int(s.session.quality) - kQualities[q])) q = i;
     SelectCombo(CmbQuality, q);
     SelectCombo(CmbCodec, s.session.codec == proto::Codec::H265 ? 1 : 0);
+    FillCombo(CmbTransport, {L"Automático (USB direto quando possível)", L"Somente ADB"});
+    SelectCombo(CmbTransport, s.transport == TransportMode::AdbOnly ? 1 : 0);
     comboModes_.clear();
     if (s.session.mode) comboModes_.push_back(*s.session.mode);
     std::vector<std::wstring> res = {L"Automática (nativa do celular)"};
@@ -162,6 +164,9 @@ void MainWindow::Layout() {
     row(LblPhone, ValPhone);
     row(LblLink, ValLink);
     row(LblMonitor, ValMonitor);
+    place(LblTransport, innerX, y + Scale(4), labelW, rowH - Scale(4));
+    place(CmbTransport, valueX, y, valueW, comboH);
+    y += rowH + Scale(6);
     place(BtnConnect, valueX, y + Scale(4), Scale(140), Scale(30));
     y += Scale(44);
     place(GrpConn, m, top, width - m, y - top);
@@ -247,7 +252,7 @@ void MainWindow::Refresh() {
     else if (!st.deviceModel.empty())
         phone = st.deviceModel + L" (" + std::wstring(st.serial.begin(), st.serial.end()) + L")";
     SetText(ValPhone, phone);
-    SetText(ValLink, st.hasSession ? si.transport : (st.serial.empty() ? L"nenhum celular detectado" : L"USB (ADB) — aguardando"));
+    SetText(ValLink, st.hasSession ? si.transport : (st.serial.empty() ? L"nenhum celular detectado" : L"celular detectado — aguardando"));
     std::wstring mon = L"Inativo";
     if (st.hasSession && !si.displayName.empty()) {
         mon = L"Ativo — " + si.displayName;
@@ -328,6 +333,7 @@ void MainWindow::OnCommand(int id, int code) {
     case CmbFps: controller_.SetFps(uint32_t(kFps[sel])); break;
     case CmbQuality: controller_.SetQuality(uint32_t(kQualities[sel])); break;
     case CmbCodec: controller_.SetCodec(sel == 1 ? proto::Codec::H265 : proto::Codec::H264); break;
+    case CmbTransport: controller_.SetTransport(sel == 1 ? TransportMode::AdbOnly : TransportMode::Auto); break;
     }
 }
 

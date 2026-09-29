@@ -17,7 +17,7 @@ $devcon = Get-ChildItem "$root\windows\driver\packages" -Recurse -Filter devcon.
 if ($devcon) { & $devcon remove "Root\CelMonIdd" }
 
 # Remove the package from the driver store.
-$drivers = Get-WindowsDriver -Online | Where-Object { $_.OriginalFileName -like "*celmonidd.inf" }
+$drivers = Get-WindowsDriver -Online | Where-Object { $_.OriginalFileName -like "*celmonidd.inf" -or $_.OriginalFileName -like "*celmonaoa.inf" }
 foreach ($d in $drivers) {
     Write-Host "Removendo $($d.Driver) do driver store"
     pnputil /delete-driver $d.Driver /uninstall /force

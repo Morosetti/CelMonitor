@@ -19,6 +19,7 @@
 #include "../src/pipeline/VideoPipeline.h"
 #include "../src/session/HostSession.h"
 #include "../src/transport/AdbTransport.h"
+#include "../src/transport/AoaTransport.h"
 #include "../src/util/Log.h"
 #include "TestPattern.h"
 #include "Verify.h"
@@ -177,6 +178,37 @@ static int CmdVerify(int argc, char** argv) {
 
 static std::atomic<bool> g_stop{false};
 
+// AOA bootstrap check: lists ADB/accessory interfaces; with --switch, sends the accessory handshake.
+static int CmdAoaProbe(int argc, char** argv) {
+    bool doSwitch = argc > 0 && !strcmp(argv[0], "--switch");
+    auto print = [](const char* title, const std::vector<UsbInterfaceInfo>& l) {
+        printf("%s: %zu\n", title, l.size());
+        for (auto& i : l) wprintf(L"  %04X:%04X serial=%hs  %ls\n", i.vid, i.pid, i.serial.c_str(), i.instance.c_str());
+    };
+    printf("driver AOA (CelMonAoa.inf) instalado: %s\n", AoaTransport::DriverInstalled() ? "sim" : "nao");
+    print("interfaces ADB", AoaTransport::Enumerate(GUID_DEVINTERFACE_ANDROID_ADB));
+    print("interfaces de acessorio CelMonitor", AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA));
+    if (!doSwitch) return 0;
+
+    AdbTransport adb;
+    Status s = adb.Init();
+    if (!s.ok) return Fail(s);
+    auto adbIfs = AoaTransport::Enumerate(GUID_DEVINTERFACE_ANDROID_ADB);
+    if (adbIfs.empty()) return Fail(Status::Error(L"Nenhuma interface ADB (Depuração USB desligada?)"));
+    printf("parando o servidor adb...\n");
+    adb.StopServer();
+    int protocol = 0;
+    s = AoaTransport::SwitchToAccessory(adbIfs[0], &protocol);
+    printf("protocolo AOA do celular: %d\n", protocol);
+    if (!s.ok) { adb.StartServer(); return Fail(s); }
+    printf("comando enviado; aguardando o celular reaparecer como acessorio...\n");
+    Sleep(4000);
+    adb.StartServer();
+    print("interfaces ADB", AoaTransport::Enumerate(GUID_DEVINTERFACE_ANDROID_ADB));
+    print("interfaces de acessorio CelMonitor", AoaTransport::Enumerate(GUID_DEVINTERFACE_CELMON_AOA));
+    return 0;
+}
+
 static std::optional<RECT> MonitorRect(const std::wstring& gdiName) {
     struct Ctx { const std::wstring* name; std::optional<RECT> rect; } ctx{&gdiName, std::nullopt};
     EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR m, HDC, LPRECT, LPARAM p) -> BOOL {
@@ -248,6 +280,18 @@ static int CmdServe(int argc, char** argv) {
     if (!ended) session.Stop(L"encerrado no PC");
     while (!ended) Sleep(50);
     wprintf(L"Sessao encerrada: %ls\n", endReason.c_str());
+    return 0;
+}
+
+// Animated test pattern on an existing monitor (e.g. the one created by CelMonitor.exe), for measuring fps/latency.
+static int CmdPattern(int argc, char** argv) {
+    if (argc < 1) { fprintf(stderr, "uso: pattern <\\\\.\\DISPLAYn> [segundos]\n"); return 2; }
+    auto rect = MonitorRect(Widen(argv[0]));
+    if (!rect) return Fail(Status::Error(L"Monitor não encontrado."));
+    TestPattern p;
+    p.Start(*rect);
+    Sleep((argc > 1 ? atoi(argv[1]) : 10) * 1000);
+    p.Stop();
     return 0;
 }
 
@@ -355,6 +399,8 @@ int main(int argc, char** argv) {
     if (!strcmp(argv[1], "bench-encoder")) return CmdBenchEncoder(argc - 2, argv + 2);
     if (!strcmp(argv[1], "capture-display")) return CmdCaptureDisplay(argc - 2, argv + 2);
     if (!strcmp(argv[1], "serve")) return CmdServe(argc - 2, argv + 2);
+    if (!strcmp(argv[1], "aoa-probe")) return CmdAoaProbe(argc - 2, argv + 2);
+    if (!strcmp(argv[1], "pattern")) return CmdPattern(argc - 2, argv + 2);
     fprintf(stderr, "comando desconhecido: %s\n", argv[1]);
     return 2;
 }

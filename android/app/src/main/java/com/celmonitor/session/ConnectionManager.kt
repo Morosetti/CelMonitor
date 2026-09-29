@@ -20,6 +20,7 @@ import com.celmonitor.protocol.Notice
 import com.celmonitor.protocol.Proto
 import com.celmonitor.protocol.StreamConfig
 import com.celmonitor.protocol.TouchContact
+import com.celmonitor.transport.AccessorySource
 import com.celmonitor.transport.AdbSocketSource
 import com.celmonitor.transport.ConnectionSource
 import java.security.MessageDigest
@@ -41,8 +42,9 @@ class ConnectionManager(private val context: Context) {
     }
 
     private val main = Handler(Looper.getMainLooper())
-    private var source: ConnectionSource? = null
-    private var acceptThread: Thread? = null
+    // Every transport listens at once (ADB socket and USB accessory); only one session runs at a time.
+    private var sources: List<ConnectionSource> = emptyList()
+    private val sessionLock = Any()
     @Volatile private var session: ClientSession? = null
     @Volatile private var surface: Surface? = null
 
@@ -60,11 +62,10 @@ class ConnectionManager(private val context: Context) {
 
     fun start() {
         paused = false
-        if (acceptThread != null) return
-        val src = AdbSocketSource()
-        source = src
+        if (sources.isNotEmpty()) return
+        sources = listOf(AdbSocketSource(), AccessorySource(context))
         setState(State.Waiting((state as? State.Waiting)?.lastError))
-        acceptThread = Thread({ acceptLoop(src) }, "celmon-accept").apply { start() }
+        for (src in sources) Thread({ acceptLoop(src) }, "celmon-accept-${src.name}").start()
     }
 
     /** Leaves monitor mode: ends the session and stops listening until [start] is called again. */
@@ -75,15 +76,24 @@ class ConnectionManager(private val context: Context) {
     }
 
     private fun stopInternal() {
-        source?.close()
-        source = null
+        sources.forEach { it.close() }
+        sources = emptyList()
         session?.close(DisconnectReason.NORMAL, "usuário saiu do modo monitor")
-        acceptThread = null
     }
 
     private fun acceptLoop(src: ConnectionSource) {
         while (true) {
             val conn = src.accept() ?: break
+            synchronized(sessionLock) {
+                if (session != null) {
+                    // The PC only uses one transport at a time; a second connection is stale or a mistake.
+                    Log.w(TAG, "already in a session; refusing ${conn.description}")
+                    conn.close()
+                    Thread.sleep(1000) // an attached accessory would otherwise be reopened in a tight loop
+                    return@synchronized null
+                }
+                conn
+            } ?: continue
             Log.i(TAG, "connected via ${conn.description}")
             val hello = try { buildHello() } catch (e: Exception) {
                 Log.e(TAG, "cannot describe display", e)
@@ -109,9 +119,9 @@ class ConnectionManager(private val context: Context) {
                 }
             })
             surface?.let { s.attachSurface(it) }
-            session = s
+            synchronized(sessionLock) { session = s }
             s.run() // blocks until the session ends
-            session = null
+            synchronized(sessionLock) { session = null }
             hostStatus = null
         }
         Log.i(TAG, "accept loop finished")

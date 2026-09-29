@@ -46,3 +46,14 @@ if ($LASTEXITCODE -eq 1) { Write-Warning "O Windows pediu reinicializacao para c
 
 Start-Sleep -Seconds 2
 Get-PnpDevice | Where-Object { $_.HardwareID -contains "Root\CelMonIdd" } | Format-Table Status, Class, FriendlyName, InstanceId -AutoSize
+
+# WinUSB for phones in accessory mode (direct USB connection, no adb in the data path).
+$aoa = Join-Path $root "build\driver\$Configuration\CelMonAoa"
+if (Test-Path "$aoa\celmonaoa.cat") {
+    if ((Get-AuthenticodeSignature "$aoa\celmonaoa.cat").SignerCertificate -eq $null) { throw "celmonaoa.cat nao esta assinado. Rode sign-driver.ps1 antes." }
+    Write-Host "Instalando o driver USB do modo acessorio (CelMonAoa)..."
+    pnputil /add-driver "$aoa\CelMonAoa.inf" /install
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "pnputil falhou (codigo $LASTEXITCODE)" }
+} else {
+    Write-Warning "Pacote CelMonAoa nao encontrado; a conexao direta (AOA) ficara indisponivel, so ADB."
+}

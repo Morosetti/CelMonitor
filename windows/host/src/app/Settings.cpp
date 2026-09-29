@@ -40,6 +40,7 @@ AppSettings AppSettings::Load() {
     s.session.portrait = GetInt(ini, L"portrait", 0) != 0;
     UINT w = GetInt(ini, L"width", 0), h = GetInt(ini, L"height", 0);
     if (w && h) s.session.mode = Mode{w, h, 60};
+    s.transport = GetInt(ini, L"transport", 0) == 1 ? TransportMode::AdbOnly : TransportMode::Auto;
     s.autoConnect = GetInt(ini, L"autoConnect", 1) != 0;
     wchar_t serial[128] = {};
     GetPrivateProfileStringW(L"CelMonitor", L"lastSerial", L"", serial, 128, ini.c_str());
@@ -56,6 +57,7 @@ void AppSettings::Save() const {
     PutInt(ini, L"portrait", session.portrait ? 1 : 0);
     PutInt(ini, L"width", session.mode ? session.mode->width : 0);
     PutInt(ini, L"height", session.mode ? session.mode->height : 0);
+    PutInt(ini, L"transport", transport == TransportMode::AdbOnly ? 1 : 0);
     PutInt(ini, L"autoConnect", autoConnect ? 1 : 0);
     WritePrivateProfileStringW(L"CelMonitor", L"lastSerial", std::wstring(lastSerial.begin(), lastSerial.end()).c_str(), ini.c_str());
 }

@@ -9,6 +9,7 @@
 
 #include "../session/HostSession.h"
 #include "../transport/AdbTransport.h"
+#include "../transport/AoaTransport.h"
 #include "Settings.h"
 
 namespace celmon {
@@ -54,6 +55,7 @@ public:
     void SetFps(uint32_t fps);
     void SetQuality(uint32_t quality);
     void SetCodec(proto::Codec codec);  // applies on the next connection
+    void SetTransport(TransportMode mode);  // applies on the next connection
     void SetOrientation(bool portrait);
     void SetResolution(std::optional<Mode> mode);  // nullopt = automatic (native)
 
@@ -66,6 +68,8 @@ private:
     void SetPhase(Phase p, const std::wstring& status);
     void SetMessage(const std::wstring& m, bool error);
     std::wstring FindApk() const;
+    bool TryAoa(const PhoneDevice& dev, bool launch);
+    bool AoaDriverInstalled();
 
     // Two locks, never nested: lock_ guards state/settings/policy; sessionLock_ guards session_'s lifetime.
     // Session callbacks (onWarning/onEnded) take lock_, so calls into the session must not hold it.
@@ -95,6 +99,12 @@ private:
     int failures_ = 0;
     ULONGLONG nextAttempt_ = 0;
     bool installTried_ = false;
+
+    // USB accessory (AOA)
+    bool aoaDriver_ = false;
+    ULONGLONG nextAoaDriverCheck_ = 0;
+    int aoaFailures_ = 0;
+    std::string aoaDisabledFor_;       // phone for which AOA failed: use ADB until it is replugged
 };
 
 const wchar_t* PhaseText(Phase p);

@@ -234,6 +234,30 @@ std::optional<SOCKET> AdbTransport::TryConnect(uint16_t port) {
     return std::nullopt;
 }
 
+void AdbTransport::StopServer() {
+    std::string o;
+    Run(L"kill-server", o, 10000);
+    preparedSerial_.clear();
+    preparedPort_ = 0;
+}
+
+void AdbTransport::StartServer() {
+    // No redirected handles: the daemon would otherwise inherit our pipes (see Init()).
+    STARTUPINFOW si = {sizeof(si)};
+    PROCESS_INFORMATION pi = {};
+    std::wstring cmd = L"\"" + adb_ + L"\" start-server";
+    if (CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        WaitForSingleObject(pi.hProcess, 15000);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+}
+
+void AdbTransport::LaunchApp(const std::string& serial) {
+    std::string o;
+    Run(L"-s " + Widen(serial) + L" shell am start -n " + Widen(kActivity), o);
+}
+
 void AdbTransport::Forget(const std::string& serial) {
     if (preparedSerial_ == serial) {
         preparedSerial_.clear();

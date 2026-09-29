@@ -4,7 +4,8 @@
 
 .DESCRIPTION
   Creates (once) a code-signing certificate "CelMonitor Local Driver Signing" in CurrentUser\My, exports its public
-  part to build\driver\CelMonitorDriver.cer and signs CelMonIdd.dll + celmonidd.cat. No admin rights needed.
+  part to build\driver\CelMonitorDriver.cer and signs CelMonIdd.dll, celmonidd.cat and celmonaoa.cat (WinUSB INF for
+  phones in accessory mode). No admin rights needed. The private key is non-exportable and never leaves the store.
   Distribution to other PCs requires an EV certificate + Microsoft attestation signing instead (see docs).
 #>
 param(
@@ -13,7 +14,9 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\..\.."
 $pkg = Join-Path $root "build\driver\$Configuration\CelMonIdd"
+$aoa = Join-Path $root "build\driver\$Configuration\CelMonAoa"
 if (-not (Test-Path "$pkg\CelMonIdd.inf")) { throw "Driver package not found at $pkg. Build windows\driver first." }
+if (-not (Test-Path "$aoa\celmonaoa.cat")) { throw "AOA package not found at $aoa. Build windows\driver first." }
 
 $signtool = Get-ChildItem "$root\windows\driver\packages" -Recurse -Filter signtool.exe |
     Where-Object FullName -match '\\x64\\' | Select-Object -First 1 -ExpandProperty FullName
@@ -30,7 +33,7 @@ if (-not $cert) {
 $cer = Join-Path $root "build\driver\CelMonitorDriver.cer"
 Export-Certificate -Cert $cert -FilePath $cer -Force | Out-Null
 
-foreach ($f in @("$pkg\CelMonIdd.dll", "$pkg\celmonidd.cat")) {
+foreach ($f in @("$pkg\CelMonIdd.dll", "$pkg\celmonidd.cat", "$aoa\celmonaoa.cat")) {
     & $signtool sign /fd sha256 /sha1 $cert.Thumbprint /s My $f
     if ($LASTEXITCODE -ne 0) { throw "signtool failed for $f" }
 }

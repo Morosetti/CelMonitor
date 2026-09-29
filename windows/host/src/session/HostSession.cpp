@@ -63,12 +63,30 @@ HostSession::~HostSession() {
     Stop(L"");
     if (reader_.joinable()) reader_.join();
     if (writer_.joinable()) writer_.join();
+    if (watchdog_.joinable()) watchdog_.join();
 }
 
 void HostSession::Start() {
     lastReceivedUs_ = NowUs();
     writer_ = std::thread(&HostSession::WriterLoop, this);
     reader_ = std::thread(&HostSession::ReaderLoop, this);
+    // Independent of reader/writer: over USB accessory, a dead phone app leaves writes blocked forever (the phone
+    // simply stops reading), so a timeout checked inside the writer would never fire. End() closes the connection,
+    // which aborts the pending transfers and releases both threads.
+    watchdog_ = std::thread([this] {
+        while (!ended_) {
+            Sleep(250);
+            bool handshaken;
+            {
+                std::lock_guard<std::mutex> lock(lock_);
+                handshaken = !hello_.deviceId.empty();
+            }
+            if (!ended_ && NowUs() - lastReceivedUs_ > kTimeoutUs)
+                End(DisconnectReason::Timeout,
+                    handshaken ? L"o celular parou de responder" : L"o app do celular não respondeu (está aberto e desbloqueado?)",
+                    false);
+        }
+    });
 }
 
 void HostSession::Stop(const std::wstring& reason) {
@@ -132,6 +150,13 @@ void HostSession::WriterLoop() {
             break;
         }
         uint64_t now = NowUs();
+        bool handshaken;
+        {
+            std::lock_guard<std::mutex> lock(lock_);
+            handshaken = !hello_.deviceId.empty();
+        }
+        // Until the phone speaks (HELLO) nothing is sent: over USB accessory, unread data would linger in the pipe.
+        if (!handshaken) nextBeat = now + kHeartbeatUs;
         if (now >= nextBeat && !ended_) {
             nextBeat = now + kHeartbeatUs;
             Heartbeat hb;
@@ -156,9 +181,6 @@ void HostSession::WriterLoop() {
             }
             Send(MsgType::HostStatus, serialize(st), kFlagIgnorable);
             Changed();
-            if (now - lastReceivedUs_ > kTimeoutUs) {
-                End(DisconnectReason::Timeout, L"o celular parou de responder", false);
-            }
         }
     }
 }

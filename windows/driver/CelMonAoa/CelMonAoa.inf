@@ -1,0 +1,43 @@
+;
+; CelMonAoa.inf - WinUSB for Android phones in accessory mode (Android Open Accessory, any brand).
+;
+; In accessory mode every Android phone uses Google's fixed IDs:
+;   18D1:2D00  accessory
+;   18D1:2D01  accessory + adb   (interface 0 = accessory, interface 1 = adb)
+; Only the accessory interface is bound here; the adb interface keeps the driver Windows assigns to it.
+;
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = USBDevice
+ClassGuid   = {88BAE032-5A81-49f0-BC3D-A4FF138216D6}
+Provider    = %ManufacturerName%
+CatalogFile = CelMonAoa.cat
+DriverVer   = 09/29/2026,1.0.0.0
+PnpLockdown = 1
+
+[Manufacturer]
+%ManufacturerName% = Standard,NTamd64
+
+[Standard.NTamd64]
+%AccessoryName% = CelMonAoa_Install, USB\VID_18D1&PID_2D00
+%AccessoryName% = CelMonAoa_Install, USB\VID_18D1&PID_2D01&MI_00
+
+[CelMonAoa_Install]
+Include = winusb.inf
+Needs   = WINUSB.NT
+
+[CelMonAoa_Install.Services]
+Include = winusb.inf
+Needs   = WINUSB.NT.Services
+
+[CelMonAoa_Install.HW]
+AddReg = CelMonAoa_AddReg
+
+[CelMonAoa_AddReg]
+; GUID_DEVINTERFACE_CELMON_AOA (windows/host/src/transport/AoaTransport.h)
+HKR,,DeviceInterfaceGUIDs,0x10000,"{5076744A-ED79-469F-8E71-C2131A5B33B4}"
+
+[Strings]
+ManufacturerName = "CelMonitor"
+AccessoryName    = "CelMonitor USB (acessório Android)"

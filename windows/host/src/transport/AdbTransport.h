@@ -29,6 +29,14 @@ public:
     // Drops cached state for a phone that went away (forward port).
     void Forget(const std::string& serial);
 
+    // The adb server keeps the phone's ADB interface open (WinUSB is exclusive); it is stopped briefly while the
+    // AOA switch request is sent through that interface, then started again.
+    void StopServer();
+    void StartServer();
+
+    // Opens the app on the phone (used with the USB accessory transport too, whose data does not go through adb).
+    void LaunchApp(const std::string& serial);
+
     // Installs the given APK (used when the app is missing).
     Status InstallApk(const std::string& serial, const std::wstring& apkPath);
 
