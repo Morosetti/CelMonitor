@@ -42,3 +42,7 @@ Documentos técnicos:
 | Paisagem/retrato, resolução, FPS, qualidade, perfis por celular | pronto |
 | Instalador, bandeja, iniciar com o Windows, guia de primeiros passos | pronto |
 | Touch do celular controlando o PC | próxima fase |
+
+## Licença
+
+[MIT](LICENSE). O ADB (Android SDK Platform-Tools) não faz parte deste repositório: o instalador o baixa do Google, sob a licença do Google.
