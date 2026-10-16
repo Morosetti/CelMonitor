@@ -41,7 +41,9 @@ Documentos técnicos:
 | USB direto (AOA) com volta automática para ADB | pronto |
 | Paisagem/retrato, resolução, FPS, qualidade, perfis por celular | pronto |
 | Instalador, bandeja, iniciar com o Windows, guia de primeiros passos | pronto |
-| Touch do celular controlando o PC | próxima fase |
+| Toque do celular controlando o PC (multitoque, gestos do Windows) | pronto |
+| Atalho para levar a janela ativa ao celular e de volta | pronto |
+| Atualização automática do app do celular | pronto |
 
 ## Licença
 

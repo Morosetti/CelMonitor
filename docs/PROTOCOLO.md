@@ -136,9 +136,21 @@ Responder na hora evita que a espera do ciclo de 1 s entre na medida de RTT.
 
 `u8 action (1 move, 2 down, 3 up, 4 wheel), u8 button (1 esq., 2 dir., 3 meio), u16 reservado, u16 x, u16 y, i16 wheelV, i16 wheelH`
 
+Reservado: o host valida e ignora (o app atual envia toque, não mouse).
+
 ### 0x0031 INPUT_TOUCH (cliente → host), 4 + n×8 bytes
 
 `u8 count (1–10), u8 reservado[3]` + `count ×` `{u8 id (0–9), u8 action (1 down, 2 move, 3 up, 4 cancel), u16 reservado, u16 x, u16 y}`
+
+Uma mensagem por evento de toque do Android, com **todos os dedos na tela**: o que mudou (down/up/cancel) e os demais como move. `x`/`y` são normalizados sobre a área do vídeo (0 = borda esquerda/superior, 65535 = direita/inferior).
+
+O host:
+- só injeta com o stream ativo (após HELLO e STREAM_READY) e com a opção *"Tocar na tela do celular controla o PC"* ligada; caso contrário descarta e solta dedos pendentes;
+- converte para o retângulo do monitor virtual na área de trabalho (relido no início de cada gesto), então o toque nunca sai desse monitor;
+- injeta como toque do Windows (`InjectSyntheticPointerInput`, `PT_TOUCH`): toque = clique, segurar = botão direito, arrastar = rolar/arrastar, pinça = zoom;
+- repete a posição a cada 40 ms enquanto um dedo estiver parado (o Windows precisa disso para "segurar"), e solta todos os dedos ao fim da sessão.
+
+Janelas de administrador e a tela do UAC não aceitam toque injetado por um programa comum (isolamento do Windows); o host avisa uma vez.
 
 ### 0x00F0 NOTICE (host → cliente, IGNORABLE)
 

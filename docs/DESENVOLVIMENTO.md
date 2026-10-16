@@ -15,8 +15,9 @@ windows/
     pipeline/             VideoPipeline: captura -> conversão -> encode, recuperação de erros
     transport/            IConnection, AdbTransport, AoaTransport (+ sincronização do canal)
     session/              HostSession: protocolo, controle de fluxo, heartbeat/watchdog
+    input/                TouchInjector: toque do celular -> toque do Windows no monitor virtual
     app/                  Controller (detecção, reconexão, políticas), Settings (perfis), PhoneDetect
-    ui/                   janela Win32, bandeja, configurações avançadas
+    ui/                   janela Win32, bandeja, configurações avançadas, atalho "janela para o celular" (WindowMover)
     util/                 log, estatísticas de processo, início automático
   host/tools/celmon_cli   diagnóstico por etapa + instalação de drivers (usado pelo instalador)
   host/tests/             testes do protocolo (gera os vetores cruzados)
@@ -26,6 +27,7 @@ android/app/src/main/java/com/celmonitor/
   transport/              AdbSocketSource, AccessorySource, AccessorySync
   session/                ClientSession, ConnectionManager
   decoder/                VideoDecoder (MediaCodec -> Surface)
+  input/                  TouchMapper (MotionEvent -> INPUT_TOUCH)
   display/                resolução/decoders do aparelho -> modos oferecidos ao PC
 docs/                     análise técnica, protocolo, instalação, este guia
 ```
@@ -98,11 +100,13 @@ Diagnóstico por etapa com o `celmon-cli`:
 3. Android: `Codec` já mapeia o MIME; `DeviceDisplay.buildModes` passa a marcar o bit nos modos que o decoder aceita.
 4. UI: opção no combo *Codec* (`MainWindow`) e no perfil (`Settings`).
 
-## Adicionar um tipo de entrada (fase 2: touch)
+## Toque (entrada)
 
-1. Protocolo: nova mensagem (ou campo) em `celmon_protocol.h`/`Protocol.kt`, com validação de faixa no parser e teste.
-2. Android: gerar o evento na `SurfaceView` (coordenadas normalizadas 0–65535 sobre a área do vídeo) e enviar pela `ClientSession`.
-3. Windows: tratar em `HostSession::Handle` (hoje `INPUT_MOUSE`/`INPUT_TOUCH` já são validados e ignorados) e injetar com `SendInput`/`InjectSyntheticPointerInput`, convertendo para o retângulo do monitor virtual (`VirtualDisplay::DesktopRect`).
+O toque já funciona: `TouchMapper` (Android) gera `INPUT_TOUCH` a partir dos `MotionEvent` da `SurfaceView`; `HostSession::OnTouch` valida o estado e chama `TouchInjector`, que injeta toque do Windows no retângulo do monitor virtual (`VirtualDisplay::DesktopRect`). Para outro tipo de entrada (ex.: mouse/touchpad com `INPUT_MOUSE`):
+
+1. Protocolo: mensagem em `celmon_protocol.h`/`Protocol.kt` com validação de faixa no parser e teste.
+2. Android: gerar o evento e enviar pela `ConnectionManager`.
+3. Windows: tratar em `HostSession::Handle`, só com o stream ativo, sempre limitado ao monitor virtual.
 
 ## Logo e ícones
 
@@ -110,6 +114,6 @@ Diagnóstico por etapa com o `celmon-cli`:
 
 ## Publicar uma versão
 
-1. Atualize a versão em `windows/host/res/CelMonitor.rc` e `android/app/build.gradle.kts` (`versionCode`/`versionName`).
+1. Atualize a versão em `windows/host/res/CelMonitor.rc` e `android/app/build.gradle.kts` (`versionName` e **sempre aumente o `versionCode`**: é por ele que o CelMonitor decide atualizar o app nos celulares; o instalador grava esse número em `CelMonitor.apk.version`).
 2. `.\windows\installer\build-installer.ps1 -Version X.Y.Z`
 3. Teste o instalador numa máquina limpa (ou VM) seguindo `INSTALACAO.md`.

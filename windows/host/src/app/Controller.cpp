@@ -176,6 +176,16 @@ void Controller::SetResolution(std::optional<Mode> mode) {
     if (!s.ok) SetMessage(s.message, true);
 }
 
+void Controller::SetTouchInput(bool on) {
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        profile_.session.touchInput = on;
+        profile_.Save(profileSerial_);
+    }
+    std::lock_guard<std::mutex> lock(sessionLock_);
+    if (session_) session_->SetTouchInput(on);
+}
+
 // ------------------------------------------------------------------------------------------------ worker
 
 void Controller::Run() {

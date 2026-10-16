@@ -62,6 +62,7 @@ public:
     void SetCodec(proto::Codec codec);  // applies on the next connection
     void SetOrientation(bool portrait);
     void SetResolution(std::optional<Mode> mode);  // nullopt = automatic (native)
+    void SetTouchInput(bool on);                   // the phone's touches control the PC
 
 private:
     void Run();

@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "../display/VirtualDisplay.h"
+#include "../input/TouchInjector.h"
 #include "../pipeline/VideoPipeline.h"
 #include "../transport/Transport.h"
 
@@ -23,6 +24,7 @@ struct SessionSettings {
     std::optional<Mode> mode;       // explicit resolution (must be one the phone supports)
     bool decoderLowLatency = true;  // phone may use vendor low-latency decoder keys (some decoders misbehave)
     uint32_t maxBitrateKbps = 0;    // 0 = automatic
+    bool touchInput = true;         // the phone's touches control the PC (inside the virtual monitor)
 };
 
 enum class SessionState { Handshaking, CreatingMonitor, Streaming, Ended };
@@ -62,6 +64,7 @@ public:
     void SetQuality(uint32_t quality);
     void SetOrientation(bool portrait);
     Status SetResolution(const Mode& m);
+    void SetTouchInput(bool on) { touchEnabled_ = on; }
 
 private:
     void ReaderLoop();
@@ -70,6 +73,7 @@ private:
     void OnHello(const proto::Hello& h);
     void OnStreamStart(uint32_t w, uint32_t h, const std::wstring& encoder);
     void OnFrame(EncodedFrame&& f);
+    void OnTouch(const proto::InputTouch& t);  // reader thread
     void ApplyOrientation(bool portrait);
     void Send(proto::MsgType type, const std::vector<uint8_t>& payload, uint16_t flags = 0);
     void SendRaw(std::vector<uint8_t>&& message);
@@ -103,6 +107,12 @@ private:
     bool streamReady_ = false;
     uint32_t lastFrameSent_ = 0, lastFrameAcked_ = 0;
     std::atomic<uint64_t> lastReceivedUs_{0};
+    // Touch (reader thread only, except the atomics)
+    std::atomic<bool> touchEnabled_{true};
+    std::atomic<bool> touchAreaStale_{true};  // the monitor's desktop rectangle must be read again
+    std::unique_ptr<TouchInjector> touch_;
+    RECT touchArea_ = {};
+    bool touchWarned_ = false;
     // Stats window
     uint64_t statStartUs_ = 0, statFrames_ = 0, statBytes_ = 0;
 };

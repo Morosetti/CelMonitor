@@ -1,6 +1,7 @@
 package com.celmonitor
 
 import android.app.Activity
+import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.pm.ActivityInfo
 import android.os.Build
@@ -16,6 +17,7 @@ import android.widget.ImageButton
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import com.celmonitor.input.TouchMapper
 import com.celmonitor.protocol.ClientSettings
 import com.celmonitor.protocol.Notice
 import com.celmonitor.session.ConnectionManager
@@ -48,6 +50,7 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
         menuButton = findViewById(R.id.menuButton)
 
         surfaceView.holder.addCallback(this)
+        surfaceView.setOnTouchListener(::onVideoTouch)
         menuButton.setOnClickListener { showMenu() }
         resumeButton.setOnClickListener { connections.start() }
     }
@@ -143,6 +146,15 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
 
     override fun onNotice(notice: Notice) {
         Toast.makeText(this, notice.message, if (notice.severity >= 1) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+    }
+
+    /** Fingers on the video go to the PC as touch input on the virtual monitor (the PC can turn this off). */
+    @SuppressLint("ClickableViewAccessibility")  // the video has no click semantics: it forwards raw touches
+    private fun onVideoTouch(v: View, e: android.view.MotionEvent): Boolean {
+        if (connections.state !is State.Streaming) return false
+        val contacts = TouchMapper.map(e, v.width, v.height)
+        if (contacts.isNotEmpty()) connections.sendTouch(contacts)
+        return true
     }
 
     // ------------------------------------------------------------------ surface

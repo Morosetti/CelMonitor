@@ -36,5 +36,7 @@ std::wstring SettingsFilePath();
 // Small window preferences (e.g. "technical details expanded"), in the app section.
 bool GetAppFlag(const wchar_t* key, bool def);
 void SetAppFlag(const wchar_t* key, bool value);
+UINT GetAppInt(const wchar_t* key, UINT def);
+void SetAppInt(const wchar_t* key, UINT value);
 
 }  // namespace celmon

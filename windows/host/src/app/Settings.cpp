@@ -58,6 +58,7 @@ DeviceProfile DeviceProfile::Load(const std::string& serial) {
     if (w && h) s.mode = Mode{w, h, 60};
     s.decoderLowLatency = GetInt(ini, sec, L"decoderLowLatency", 1) != 0;
     s.maxBitrateKbps = std::min<UINT>(GetInt(ini, sec, L"maxBitrateKbps", 0), 100000);
+    s.touchInput = GetInt(ini, sec, L"touchInput", 1) != 0;
     UINT t = GetInt(ini, sec, L"transport", 0);
     p.transport = t == 1 ? TransportMode::AdbOnly : t == 2 ? TransportMode::AoaOnly : TransportMode::Auto;
     p.usbMaxTransfer = std::clamp<UINT>(GetInt(ini, sec, L"usbMaxTransfer", 16000), 512, 65536);
@@ -76,6 +77,7 @@ void DeviceProfile::Save(const std::string& serial) const {
     PutInt(ini, sec, L"height", session.mode ? session.mode->height : 0);
     PutInt(ini, sec, L"decoderLowLatency", session.decoderLowLatency ? 1 : 0);
     PutInt(ini, sec, L"maxBitrateKbps", session.maxBitrateKbps);
+    PutInt(ini, sec, L"touchInput", session.touchInput ? 1 : 0);
     PutInt(ini, sec, L"transport", transport == TransportMode::AdbOnly ? 1 : transport == TransportMode::AoaOnly ? 2 : 0);
     PutInt(ini, sec, L"usbMaxTransfer", usbMaxTransfer);
 }
@@ -106,6 +108,16 @@ bool GetAppFlag(const wchar_t* key, bool def) {
 void SetAppFlag(const wchar_t* key, bool value) {
     std::wstring ini = SettingsFilePath();
     if (!ini.empty()) WritePrivateProfileStringW(kAppSection, key, value ? L"1" : L"0", ini.c_str());
+}
+
+UINT GetAppInt(const wchar_t* key, UINT def) {
+    std::wstring ini = SettingsFilePath();
+    return ini.empty() ? def : GetPrivateProfileIntW(kAppSection, key, int(def), ini.c_str());
+}
+
+void SetAppInt(const wchar_t* key, UINT value) {
+    std::wstring ini = SettingsFilePath();
+    if (!ini.empty()) PutInt(ini, kAppSection, key, value);
 }
 
 }  // namespace celmon

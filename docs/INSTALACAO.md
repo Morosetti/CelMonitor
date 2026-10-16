@@ -44,6 +44,9 @@ Da próxima vez basta plugar o cabo: se o CelMonitor estiver na bandeja, ele con
 
 - **Bandeja do Windows:** o ícone fica **azul enquanto transmite** e **cinza** quando não há celular transmitindo; passe o mouse para ver o estado. Clique para abrir; botão direito para *Conectar/Desconectar*, *Iniciar com o Windows* e *Sair*.
 - **Fechar a janela (X)** só a esconde; o CelMonitor continua na bandeja. Para encerrar, use *Sair*.
+- **Toque:** tocar na imagem do celular controla o PC como numa tela touch: toque = clique, segurar = botão direito, arrastar = rolar ou arrastar, pinça = zoom (nos apps que aceitam). Dá para desligar em *Tocar na tela do celular controla o PC* (fica salvo por celular). Janelas abertas como administrador não aceitam o toque (limitação do Windows).
+- **Atalho Ctrl+Alt+M:** leva a janela ativa para o monitor do celular; apertando de novo, ela volta para o monitor de onde veio (maximizada continua maximizada). Troque a combinação no campo *Atalho* da janela.
+- **Atualização do app do celular:** ao conectar, o CelMonitor compara a versão do app no celular com a que veio com o programa e atualiza sozinho se precisar (*Atualizando o app no celular...*). Depois de uma instalação nova, o celular pergunta de novo *Abrir CelMonitor para este acessório USB?*: marque *Usar por padrão* e toque em **OK**.
 - **No celular**, o botão ▼ no canto abre o menu: sair do modo monitor, orientação, qualidade, FPS e informações da conexão.
 - **Na janela do PC:** o topo mostra o estado, o celular e os números ao vivo (resolução, FPS, atraso); abaixo, *Próximo passo* diz o que fazer e *Tela do celular* tem resolução, orientação, FPS máximo, qualidade e codec. Tudo fica salvo **por celular**. Os números técnicos (taxa, encode, RTT, CPU/GPU, encoder) ficam em **Detalhes técnicos**.
 
@@ -71,6 +74,7 @@ Cada celular tem o seu próprio perfil. Se algo não funcionar bem num aparelho,
 | Imagem congela ou fica corrompida | Configurações avançadas: desmarque *otimizações do decoder*; ou use *Somente ADB*. |
 | Conexão direta cai ao começar o vídeo | Configurações avançadas: reduza o *tamanho da transferência USB*. |
 | Imagem escura/amarelada | É o *Luz Noturna* do Windows ou o *Modo de leitura* do celular. |
+| "Não foi possível instalar o app no celular" | Siga o *Próximo passo*. Na Xiaomi, ative *Instalar via USB* nas Opções do desenvolvedor (pode pedir a conta Mi) e aceite a pergunta no celular durante a instalação. |
 | Transferência de arquivos (MTP) sumiu | Enquanto a conexão direta está ativa o celular fica em modo acessório; desconecte e reconecte o cabo para voltar ao normal. |
 
 Log detalhado: botão **Pasta de logs** (arquivo `celmonitor.log`).

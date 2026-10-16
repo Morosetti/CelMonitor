@@ -24,7 +24,7 @@ enum : int {
     // header: logo (painted), status, phone summary, live numbers, main button
     ValStatus = 200, ValPhone, ValLive, BtnConnect,
     // monitor settings
-    LblRes = 300, CmbRes, LblOrient, CmbOrient, LblFps, CmbFps, LblQuality, CmbQuality, LblCodec, CmbCodec, NoteCodec,
+    LblRes = 300, CmbRes, LblOrient, CmbOrient, LblFps, CmbFps, LblQuality, CmbQuality, LblCodec, CmbCodec, NoteCodec, ChkTouch, LblHotkey, HkMove, NoteHotkey,
     // technical details (collapsible)
     LblCurFps = 400, ValCurFps, LblLatency, ValLatency, LblRate, ValRate, LblEncode, ValEncode, LblRtt, ValRtt, LblCpu,
     ValCpu, LblEncoder, ValEncoder, LblLink, ValLink, LblMonitor, ValMonitor,
@@ -39,6 +39,8 @@ constexpr int kDetailIds[] = {GrpPerf, LblCurFps, ValCurFps, LblLatency, ValLate
 constexpr int kQualities[] = {25, 50, 80, 100};
 constexpr int kFps[] = {30, 60};
 constexpr int kLogoSize = 64;  // header logo, in 96-dpi pixels
+constexpr int kHotkeyMove = 1;
+constexpr WORD kDefaultMoveHotkey = MAKEWORD('M', HOTKEYF_CONTROL | HOTKEYF_ALT);
 
 std::wstring Fmt(const wchar_t* fmt, double v) {
     wchar_t b[64];
@@ -57,7 +59,7 @@ std::wstring ModeText(const Mode& m, uint32_t phoneW, uint32_t phoneH) {
 }  // namespace
 
 bool MainWindow::Create(HINSTANCE instance, int show, bool startHidden) {
-    INITCOMMONCONTROLSEX icc = {sizeof(icc), ICC_STANDARD_CLASSES};
+    INITCOMMONCONTROLSEX icc = {sizeof(icc), ICC_STANDARD_CLASSES | ICC_HOTKEY_CLASS};
     InitCommonControlsEx(&icc);
     bg_ = GetSysColorBrush(COLOR_WINDOW);
 
@@ -162,6 +164,10 @@ void MainWindow::CreateControls() {
         make(id, L"STATIC", L"", SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX);
     make(NoteCodec, L"STATIC", L"Mudanças de codec valem a partir da próxima conexão.", SS_LEFT);
     for (int id : {CmbRes, CmbOrient, CmbFps, CmbQuality, CmbCodec}) make(id, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP);
+    make(ChkTouch, L"BUTTON", L"Tocar na tela do celular controla o PC", BS_AUTOCHECKBOX | WS_TABSTOP);
+    make(LblHotkey, L"STATIC", L"Atalho:", SS_LEFT);
+    make(HkMove, HOTKEY_CLASSW, L"", WS_BORDER | WS_TABSTOP);
+    make(NoteHotkey, L"STATIC", L"", SS_LEFT);
     make(BtnConnect, L"BUTTON", L"Conectar", BS_PUSHBUTTON | WS_TABSTOP);
     make(ValMessage, L"STATIC", L"", SS_LEFT | SS_NOPREFIX);
     make(BtnDetails, L"BUTTON", L"", BS_PUSHBUTTON | WS_TABSTOP);
@@ -183,6 +189,12 @@ void MainWindow::CreateControls() {
         if (std::abs(int(s.session.quality) - kQualities[i]) < std::abs(int(s.session.quality) - kQualities[q])) q = i;
     SelectCombo(CmbQuality, q);
     SelectCombo(CmbCodec, s.session.codec == proto::Codec::H265 ? 1 : 0);
+    SendMessageW(ctl_[ChkTouch], BM_SETCHECK, s.session.touchInput ? BST_CHECKED : BST_UNCHECKED, 0);
+    // Shortcut that sends the active window to the phone and back. Requires Ctrl and/or Alt so plain typing is safe.
+    SendMessageW(ctl_[HkMove], HKM_SETRULES, HKCOMB_NONE | HKCOMB_S, MAKELPARAM(HOTKEYF_CONTROL | HOTKEYF_ALT, 0));
+    WORD hotkey = WORD(GetAppInt(L"moveWindowHotkey", kDefaultMoveHotkey));
+    SendMessageW(ctl_[HkMove], HKM_SETHOTKEY, hotkey, 0);
+    ApplyHotkey(hotkey, false);
     comboModes_.clear();
     if (s.session.mode) comboModes_.push_back(*s.session.mode);
     std::vector<std::wstring> res = {L"Automática (nativa do celular)"};
@@ -239,7 +251,12 @@ void MainWindow::Layout() {
     field(LblQuality, CmbQuality, m + pad, comboA);
     field(LblCodec, CmbCodec, colB, comboB);
     y += rowH + Scale(6);
+    place(ChkTouch, m + pad, y, colB - Scale(16) - (m + pad), Scale(22));
     place(NoteCodec, colB, y, W / 2 - Scale(8) - pad, Scale(34));
+    y += Scale(34) + Scale(6);
+    place(LblHotkey, m + pad, y + Scale(4), labelW, rowH - Scale(4));
+    place(HkMove, m + pad + labelW, y, comboA, Scale(24));
+    place(NoteHotkey, colB, y, W / 2 - Scale(8) - pad, Scale(34));
     y += Scale(34) + Scale(6);
     place(GrpMonitor, m, top, W, y - top);
     y += Scale(10);
@@ -392,8 +409,9 @@ void MainWindow::Refresh() {
     SetText(ValMessage, st.message);
     std::wstring help = st.help;
     if (help.empty() && st.hasSession)
-        help = L"Tudo pronto. Arraste janelas para o monitor do celular; a posição dele em relação às outras telas "
-               L"pode ser ajustada em Configurações do Windows > Sistema > Tela.";
+        help = L"Tudo pronto. Arraste janelas para o monitor do celular ou use o atalho abaixo; toque na tela do celular "
+               L"para clicar (segure para o botão direito).\nA posição do monitor em relação às outras telas fica em "
+               L"Configurações do Windows > Sistema > Tela.";
     SetText(ValHelp, help);
 }
 
@@ -401,6 +419,14 @@ void MainWindow::OnCommand(int id, int code) {
     if (id == BtnConnect && code == BN_CLICKED) {
         if (controller_.State().hasSession) controller_.Disconnect();
         else controller_.Connect();
+        return;
+    }
+    if (id == HkMove && code == EN_CHANGE) {
+        ApplyHotkey(WORD(SendMessageW(ctl_[HkMove], HKM_GETHOTKEY, 0, 0)), true);
+        return;
+    }
+    if (id == ChkTouch && code == BN_CLICKED) {
+        controller_.SetTouchInput(SendMessageW(ctl_[ChkTouch], BM_GETCHECK, 0, 0) == BST_CHECKED);
         return;
     }
     if (id == BtnDetails && code == BN_CLICKED) {
@@ -449,7 +475,7 @@ LRESULT MainWindow::Handle(UINT msg, WPARAM w, LPARAM l) {
         HWND c = reinterpret_cast<HWND>(l);
         SetBkMode(dc, TRANSPARENT);
         if (c == ctl_[ValMessage] && messageIsError_) SetTextColor(dc, RGB(196, 43, 28));
-        else if (c == ctl_[ValLive] || c == ctl_[NoteCodec]) SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
+        else if (c == ctl_[ValLive] || c == ctl_[NoteCodec] || c == ctl_[NoteHotkey]) SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
         return reinterpret_cast<LRESULT>(bg_);
     }
     case WM_DPICHANGED: {
@@ -475,6 +501,15 @@ LRESULT MainWindow::Handle(UINT msg, WPARAM w, LPARAM l) {
             wcscpy_s(nid.szInfoTitle, L"CelMonitor continua ativo");
             wcscpy_s(nid.szInfo, L"Ele fica aqui na bandeja e conecta sozinho quando o celular é plugado. Para encerrar, use \"Sair\".");
             Shell_NotifyIconW(NIM_MODIFY, &nid);
+        }
+        return 0;
+    case WM_HOTKEY:
+        if (w == kHotkeyMove) {
+            ControllerState st = controller_.State();
+            std::wstring err = st.hasSession && !st.session.displayName.empty()
+                                   ? mover_.ToggleForeground(st.session.displayName)
+                                   : L"Nenhum celular está transmitindo agora.";
+            if (!err.empty()) Notify(L"CelMonitor", err);
         }
         return 0;
     case kMsgExit:
@@ -557,6 +592,32 @@ void MainWindow::ShowTrayMenu() {
     case MAutostart: Autostart::SetEnabled(!Autostart::IsEnabled()); break;
     case MExit: ExitApp(); break;
     }
+}
+
+void MainWindow::ApplyHotkey(WORD hotkey, bool save) {
+    if (hotkeyRegistered_) UnregisterHotKey(hwnd_, kHotkeyMove);
+    hotkeyRegistered_ = false;
+    if (save) SetAppInt(L"moveWindowHotkey", hotkey);
+    const UINT vk = LOBYTE(hotkey), f = HIBYTE(hotkey);
+    UINT mods = MOD_NOREPEAT;
+    if (f & HOTKEYF_CONTROL) mods |= MOD_CONTROL;
+    if (f & HOTKEYF_ALT) mods |= MOD_ALT;
+    if (f & HOTKEYF_SHIFT) mods |= MOD_SHIFT;
+    const wchar_t* note = L"Sem atalho: escolha uma combinação com Ctrl ou Alt.";
+    if (vk && (mods & (MOD_CONTROL | MOD_ALT))) {
+        hotkeyRegistered_ = RegisterHotKey(hwnd_, kHotkeyMove, mods, vk) != FALSE;
+        note = hotkeyRegistered_ ? L"Leva a janela ativa para o celular e, de novo, de volta."
+                                 : L"Esse atalho já é usado por outro programa: escolha outro.";
+    }
+    SetText(NoteHotkey, note);
+}
+
+void MainWindow::Notify(const wchar_t* title, const std::wstring& text) {
+    NOTIFYICONDATAW nid = TrayData();
+    nid.uFlags = NIF_INFO;
+    wcsncpy_s(nid.szInfoTitle, title, _TRUNCATE);
+    wcsncpy_s(nid.szInfo, text.c_str(), _TRUNCATE);
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
 }
 
 void MainWindow::ExitApp() {

@@ -5,7 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")  # static CRT: no redistributable needed
 
-add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
+# Windows 10 2004 (19041), the installer's minimum: needed for synthetic pointer (touch) injection.
+add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000008)
 add_compile_options(/W4 /WX /permissive- /utf-8 /MP)
 
 set(REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
@@ -22,6 +23,7 @@ add_library(celmon_core STATIC
     src/transport/AdbTransport.cpp
     src/transport/AoaTransport.cpp
     src/session/HostSession.cpp
+    src/input/TouchInjector.cpp
     src/app/Settings.cpp
     src/app/Controller.cpp
     src/app/PhoneDetect.cpp
@@ -31,7 +33,7 @@ target_include_directories(celmon_core PUBLIC src ${REPO_ROOT}/common ${REPO_ROO
 target_link_libraries(celmon_core PUBLIC setupapi d3d11 dxgi mf mfplat mfuuid avrt winmm ws2_32)
 
 # The app (Win32 UI)
-add_executable(CelMonitor WIN32 src/ui/main.cpp src/ui/MainWindow.cpp src/ui/AdvancedDialog.cpp src/util/Autostart.cpp res/CelMonitor.rc)
+add_executable(CelMonitor WIN32 src/ui/main.cpp src/ui/MainWindow.cpp src/ui/AdvancedDialog.cpp src/ui/WindowMover.cpp src/util/Autostart.cpp res/CelMonitor.rc)
 target_link_libraries(CelMonitor PRIVATE celmon_core comctl32 pdh shell32)
 
 add_executable(celmon-cli tools/celmon_cli.cpp)

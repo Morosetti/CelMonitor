@@ -127,7 +127,7 @@ Como destravar o AOA no Windows:
 | HID virtual (VHF) | Exige driver **kernel** → assinatura Microsoft obrigatória. Nenhum ganho sobre as duas acima. Rejeitado. |
 | AOA HID | Serve para o PC controlar o *celular*, é o sentido oposto. Não se aplica. |
 
-Os gestos (toque = clique, arrastar = mover, segurar = botão direito, dois dedos = rolagem) são reconhecidos no Android; o PC recebe eventos já normalizados (coordenadas 0–65535 relativas ao monitor), valida e injeta.
+Implementado como **toque nativo do Windows**: o Android envia os dedos crus (até 10, coordenadas 0–65535 relativas ao vídeo) e o PC os injeta com `InjectSyntheticPointerInput` (`PT_TOUCH`) no retângulo do monitor virtual. Assim os gestos são os do próprio Windows (toque = clique, segurar = botão direito, arrastar = rolar/arrastar, pinça = zoom), em vez de uma emulação de mouse feita no celular. Limitação: janelas elevadas (administrador) e a tela do UAC não aceitam entrada injetada por um processo comum (UIPI).
 Limitação: sem rodar como administrador, o Windows (UIPI) bloqueia injeção em janelas elevadas; a tela segura (UAC/Ctrl+Alt+Del) nunca recebe input sintético.
 
 ---

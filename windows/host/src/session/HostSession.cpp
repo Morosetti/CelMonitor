@@ -55,7 +55,7 @@ const wchar_t* DisconnectText(DisconnectReason r) {
 }
 
 HostSession::HostSession(std::unique_ptr<IConnection> conn, SessionSettings settings, Events events)
-    : conn_(std::move(conn)), settings_(settings), events_(std::move(events)) {
+    : conn_(std::move(conn)), settings_(settings), events_(std::move(events)), touchEnabled_(settings.touchInput) {
     info_.transport = conn_->Description();
 }
 
@@ -214,6 +214,7 @@ void HostSession::ReaderLoop() {
     }
 
     // Teardown happens here, on the thread that owns the session, never inside a callback.
+    touch_.reset();  // lifts any finger still down
     pipeline_.Stop();
     Status s = display_.Remove();
     if (!s.ok && events_.onWarning) events_.onWarning(s);
@@ -368,9 +369,12 @@ void HostSession::Handle(uint16_t type, const std::vector<uint8_t>& p) {
     case MsgType::InputMouse:
         if (!parseInputMouse(d, n)) return bad(L"INPUT_MOUSE");
         break;  // phase 2
-    case MsgType::InputTouch:
-        if (!parseInputTouch(d, n)) return bad(L"INPUT_TOUCH");
-        break;  // phase 2
+    case MsgType::InputTouch: {
+        auto t = parseInputTouch(d, n);
+        if (!t) return bad(L"INPUT_TOUCH");
+        OnTouch(*t);
+        break;
+    }
     case MsgType::Disconnect: {
         auto m = parseDisconnect(d, n);
         if (m && m->reason == DisconnectReason::Normal) {
@@ -524,6 +528,7 @@ void HostSession::OnStreamStart(uint32_t w, uint32_t h, const std::wstring& enco
         info_.encoder = encoder;
         info_.state = SessionState::CreatingMonitor;
     }
+    touchAreaStale_ = true;  // new mode/orientation: the monitor rectangle changed
     c.width = w;
     c.height = h;
     c.fps = uint16_t(settings_.fps);
@@ -560,6 +565,38 @@ void HostSession::OnFrame(EncodedFrame&& f) {
     };
     if (!f.config.empty()) sendFrame(f.config, FrameCodecConfig, frameNo);
     sendFrame(f.data, f.key ? FrameKey : 0, frameNo);
+}
+
+// ------------------------------------------------------------------------------------------------ touch
+
+void HostSession::OnTouch(const InputTouch& t) {
+    bool streaming;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        streaming = streamReady_;
+    }
+    // Input is only accepted from a phone that completed the handshake and is showing the stream.
+    if (!streaming || !touchEnabled_) {
+        if (touch_) touch_->ReleaseAll();
+        return;
+    }
+    if (!touch_) touch_ = std::make_unique<TouchInjector>();
+    // Where the monitor is on the desktop: read again when a gesture starts (the user may have moved it in the
+    // Windows display settings) or after a mode change, and kept for the rest of the gesture.
+    if (touchAreaStale_.exchange(false) || !touch_->AnyDown()) {
+        auto r = display_.DesktopRect();
+        if (!r) {
+            touchAreaStale_ = true;
+            return;
+        }
+        touchArea_ = *r;
+    }
+    if (!touch_->Apply(t, touchArea_) && !touchWarned_) {
+        touchWarned_ = true;
+        if (events_.onWarning)
+            events_.onWarning(Status::Error(L"O Windows recusou o toque do celular. Janelas abertas como administrador "
+                                            L"(e a tela de confirmação do UAC) não aceitam toque de outros programas."));
+    }
 }
 
 // ------------------------------------------------------------------------------------------------ live settings

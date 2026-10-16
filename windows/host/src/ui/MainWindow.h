@@ -10,6 +10,7 @@
 
 #include "../app/Controller.h"
 #include "../util/ProcessStats.h"
+#include "WindowMover.h"
 
 namespace celmon {
 
@@ -44,6 +45,8 @@ private:
     void ShowFromTray();
     void ShowTrayMenu();
     void ExitApp();
+    void ApplyHotkey(WORD hotkey, bool save);  // HOTKEY_CLASS value: LOBYTE vk, HIBYTE HOTKEYF_*
+    void Notify(const wchar_t* title, const std::wstring& text);  // tray balloon
 
     Controller& controller_;
     HWND hwnd_ = nullptr;
@@ -66,6 +69,8 @@ private:
     bool trayNotified_ = false;
     bool exiting_ = false;
     std::wstring trayTip_;
+    WindowMover mover_;
+    bool hotkeyRegistered_ = false;
 };
 
 }  // namespace celmon
