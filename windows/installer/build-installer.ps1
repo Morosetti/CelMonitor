@@ -37,6 +37,9 @@ Remove-Item $dist -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$dist\drivers\CelMonIdd", "$dist\drivers\CelMonAoa", "$dist\docs" | Out-Null
 Copy-Item "$root\build\host\Release\CelMonitor.exe", "$root\build\host\Release\celmon-cli.exe" $dist
 Copy-Item "$root\android\app\build\outputs\apk\release\app-release.apk" "$dist\CelMonitor.apk"
+# versionCode next to the APK: CelMonitor.exe compares it with the phone's app and updates the phone when newer.
+$meta = Get-Content "$root\android\app\build\outputs\apk\release\output-metadata.json" -Raw | ConvertFrom-Json
+[IO.File]::WriteAllText("$dist\CelMonitor.apk.version", [string]$meta.elements[0].versionCode)
 Copy-Item "$root\build\driver\Release\CelMonIdd\*" "$dist\drivers\CelMonIdd"
 Copy-Item "$root\build\driver\Release\CelMonAoa\*" "$dist\drivers\CelMonAoa"
 Copy-Item "$root\build\driver\CelMonitorDriver.cer" "$dist\drivers"

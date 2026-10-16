@@ -20,7 +20,8 @@ enum class Phase {
     NoAdb,           // adb.exe not found
     WaitingDevice,   // no phone on USB
     Unauthorized,    // phone asks "Allow USB debugging?"
-    InstallingApp,
+    InstallingApp,   // installing or updating the phone app
+    InstallFailed,   // the phone has no app and installing it failed (see ControllerState::help)
     WaitingApp,      // phone present, app not in monitor mode (paused by the user / not opened)
     Connecting,
     Connected,       // session running (see SessionInfo for its own state)
@@ -72,6 +73,7 @@ private:
     void SetPhase(Phase p, const std::wstring& status);
     void SetMessage(const std::wstring& m, bool error);
     std::wstring FindApk() const;
+    bool EnsureAppUpToDate(const PhoneDevice& dev);
     bool TryAoa(const PhoneDevice& dev, bool launch);
     void UpdateHelp();
     bool AoaDriverInstalled();
@@ -106,6 +108,10 @@ private:
     int failures_ = 0;
     ULONGLONG nextAttempt_ = 0;
     bool installTried_ = false;
+    // Phone app version check/update: once per phone arrival or Connect click.
+    bool appChecked_ = false;
+    bool installBlocked_ = false;      // no app on the phone and installing failed: wait for Connect / replug
+    std::wstring installHelp_;         // what to do about the failed install/update ("Próximo passo")
 
     // USB accessory (AOA)
     bool aoaDriver_ = false;

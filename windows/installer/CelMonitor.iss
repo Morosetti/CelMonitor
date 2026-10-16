@@ -44,6 +44,7 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; Flags: un
 Source: "{#DistDir}\CelMonitor.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\celmon-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\CelMonitor.apk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#DistDir}\CelMonitor.apk.version"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\drivers\*"; DestDir: "{app}\drivers"; Flags: ignoreversion recursesubdirs
 Source: "{#DistDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 

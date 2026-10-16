@@ -192,15 +192,46 @@ std::vector<PhoneDevice> AdbTransport::ListDevices() {
     return list;
 }
 
-Status AdbTransport::InstallApk(const std::string& serial, const std::wstring& apkPath) {
+std::optional<uint32_t> AdbTransport::InstalledVersionCode(const std::string& serial) {
+    const std::wstring dev = L"-s " + Widen(serial) + L" shell ";
     std::string out;
-    int rc = Run(L"-s " + Widen(serial) + L" install -r \"" + apkPath + L"\"", out, 120000);
-    if (rc != 0 || out.find("Success") == std::string::npos) {
-        if (out.find("INSTALL_FAILED_USER_RESTRICTED") != std::string::npos)
-            return Status::Error(L"O celular bloqueou a instalação via USB. Na MIUI, ative 'Instalar via USB' nas Opções do desenvolvedor.");
-        return Status::Error(L"Falha ao instalar o app no celular: " + Widen(Trim(out)));
+    // Presence through "pm path" (unambiguous); dumpsys only for the version.
+    if (Run(dev + L"pm path " + Widen(kPackage), out, 15000) < 0) return std::nullopt;
+    if (out.find("package:") == std::string::npos) {
+        // Not installed ("pm path" prints nothing and exits 1) vs. adb error ("error: device ... not found").
+        return out.find("error") == std::string::npos ? std::optional<uint32_t>(0) : std::nullopt;
     }
-    return Status::Ok();
+    if (Run(dev + L"dumpsys package " + Widen(kPackage), out, 15000) != 0) return std::nullopt;
+    size_t p = out.find("versionCode=");  // "    versionCode=2 minSdk=29 targetSdk=34"
+    if (p == std::string::npos) return std::nullopt;
+    uint32_t v = uint32_t(strtoul(out.c_str() + p + 12, nullptr, 10));
+    return v ? std::optional<uint32_t>(v) : std::nullopt;
+}
+
+std::wstring AdbTransport::Manufacturer(const std::string& serial) {
+    std::string out;
+    if (Run(L"-s " + Widen(serial) + L" shell getprop ro.product.manufacturer", out) != 0) return {};
+    return Widen(Trim(out));
+}
+
+Status AdbTransport::InstallApk(const std::string& serial, const std::wstring& apkPath, std::string* failureCode) {
+    std::string out;
+    // Long timeout: MIUI and others show a confirmation on the phone ("Instalar via USB") and wait for the user.
+    ULONGLONG start = GetTickCount64();
+    int rc = Run(L"-s " + Widen(serial) + L" install -r \"" + apkPath + L"\"", out, 120000);
+    if (rc == 0 && out.find("Success") != std::string::npos) return Status::Ok();
+    std::string code;
+    size_t p = out.find("INSTALL_");
+    if (p != std::string::npos) {
+        size_t e = p;
+        while (e < out.size() && (isupper(uint8_t(out[e])) || out[e] == '_')) ++e;
+        code = out.substr(p, e - p);
+    } else if (GetTickCount64() - start >= 120000) {
+        code = "TIMEOUT";
+    }
+    if (failureCode) *failureCode = code;
+    Log::Warn("adb install failed (%s): %s", code.c_str(), Trim(out).c_str());
+    return Status::Error(L"Falha ao instalar o app no celular: " + Widen(Trim(out)));
 }
 
 std::optional<SOCKET> AdbTransport::TryConnect(uint16_t port) {

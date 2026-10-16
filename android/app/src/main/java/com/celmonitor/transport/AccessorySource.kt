@@ -28,7 +28,9 @@ class AccessorySource(private val context: Context) : ConnectionSource {
     private val lock = Object()
     @Volatile private var closed = false
     @Volatile private var pending: Connection? = null
-    private var permissionRequestedFor: UsbAccessory? = null
+    // Never compare UsbAccessory objects: equals() reads the serial, which throws SecurityException without permission
+    // (Android 10+) — exactly the state right after a fresh install. A flag per attach is enough.
+    private var permissionRequested = false
 
     // Last USB state reported by the system (sticky ACTION_USB_STATE broadcast).
     @Volatile private var accessoryOnline = false
@@ -54,14 +56,15 @@ class AccessorySource(private val context: Context) : ConnectionSource {
             // /dev/usb_accessory busy — then Android ignores the next "start accessory" request from the PC.
             val acc = if (accessoryOnline) usb.accessoryList?.firstOrNull { it.manufacturer == MANUFACTURER && it.model == MODEL } else null
             if (acc == null) {
-                permissionRequestedFor = null
+                permissionRequested = false
                 waitABit()
                 continue
             }
-            if (!usb.hasPermission(acc)) {
-                if (permissionRequestedFor != acc) {
-                    permissionRequestedFor = acc
-                    requestPermission(acc)
+            val allowed = try { usb.hasPermission(acc) } catch (e: SecurityException) { false }
+            if (!allowed) {
+                if (!permissionRequested) {
+                    permissionRequested = true
+                    try { requestPermission(acc) } catch (e: Exception) { Log.w(TAG, "requestPermission failed", e) }
                 }
                 waitABit()
                 continue

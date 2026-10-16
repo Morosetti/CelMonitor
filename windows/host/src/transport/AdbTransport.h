@@ -39,8 +39,15 @@ public:
     // Kills the app on the phone (releases a USB accessory it may still hold).
     void ForceStopApp(const std::string& serial);
 
-    // Installs the given APK (used when the app is missing).
-    Status InstallApk(const std::string& serial, const std::wstring& apkPath);
+    // versionCode of the app installed on the phone (dumpsys package): 0 when it is not installed, nullopt when the
+    // phone could not be queried.
+    std::optional<uint32_t> InstalledVersionCode(const std::string& serial);
+    // ro.product.manufacturer ("Xiaomi", "samsung"...), empty if unknown.
+    std::wstring Manufacturer(const std::string& serial);
+
+    // Installs or updates the app (adb install -r). On failure, failureCode receives adb's reason
+    // (e.g. "INSTALL_FAILED_USER_RESTRICTED", "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; "TIMEOUT"; empty if unknown).
+    Status InstallApk(const std::string& serial, const std::wstring& apkPath, std::string* failureCode = nullptr);
 
 private:
     // Runs adb with arguments; returns exit code, stdout+stderr in output. timeoutMs guards against hangs.

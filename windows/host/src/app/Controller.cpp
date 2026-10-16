@@ -1,5 +1,9 @@
 #include "Controller.h"
 
+#include <cwctype>
+#include <fstream>
+#include <iterator>
+
 #include "../util/Log.h"
 #include "PhoneDetect.h"
 
@@ -13,6 +17,7 @@ const wchar_t* PhaseText(Phase p) {
     case Phase::WaitingDevice: return L"Conecte o celular pelo cabo USB";
     case Phase::Unauthorized: return L"Permita a depuração USB no celular";
     case Phase::InstallingApp: return L"Instalando o app no celular...";
+    case Phase::InstallFailed: return L"Não foi possível instalar o app no celular";
     case Phase::WaitingApp: return L"Aguardando o app no celular";
     case Phase::Connecting: return L"Conectando...";
     case Phase::Connected: return L"Conectado";
@@ -98,6 +103,9 @@ void Controller::Connect() {
         failures_ = 0;
         nextAttempt_ = 0;
         installTried_ = false;
+        appChecked_ = false;
+        installBlocked_ = false;
+        installHelp_.clear();
         aoaFailures_ = 0;
         aoaDisabledFor_.clear();
         nextAoaDriverCheck_ = 0;  // the driver may have just been installed
@@ -214,6 +222,108 @@ std::wstring Controller::FindApk() const {
     return {};
 }
 
+namespace {
+
+// versionCode of an APK we ship: "CelMonitor.apk.version" next to it (written by build-installer.ps1), or Gradle's
+// output-metadata.json in the development tree. 0 when unknown (then the app is only installed when missing).
+uint32_t ApkVersionCode(const std::wstring& apk) {
+    auto read = [](const std::wstring& path) {
+        std::ifstream f(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(f), {});
+    };
+    std::string s = read(apk + L".version");
+    if (!s.empty()) return uint32_t(strtoul(s.c_str(), nullptr, 10));
+    s = read(apk.substr(0, apk.find_last_of(L'\\')) + L"\\output-metadata.json");
+    size_t p = s.find("\"versionCode\"");
+    if (p == std::string::npos || (p = s.find(':', p)) == std::string::npos) return 0;
+    return uint32_t(strtoul(s.c_str() + p + 1, nullptr, 10));
+}
+
+// "Próximo passo" text for a failed `adb install` (code from AdbTransport::InstallApk).
+std::wstring InstallFailureHelp(const std::string& code, const std::wstring& manufacturer, bool hadOldApp) {
+    std::wstring h;
+    std::wstring maker = manufacturer;
+    for (auto& c : maker) c = towlower(c);
+    const bool xiaomi = maker == L"xiaomi" || maker == L"redmi" || maker == L"poco";
+    if (code == "INSTALL_FAILED_USER_RESTRICTED") {
+        h = L"O celular recusou a instalação do app pelo USB.\n";
+        h += xiaomi ? L"Na Xiaomi: Configurações > Configurações adicionais > Opções do desenvolvedor > ative \"Instalar via USB\" "
+                      L"(a MIUI pode pedir login na conta Mi). Se o celular perguntar durante a instalação, toque em \"Instalar\".\n"
+                    : L"Desbloqueie o celular e aceite a pergunta que aparece na tela durante a instalação. "
+                      L"Em alguns aparelhos é preciso ativar \"Instalar via USB\" nas Opções do desenvolvedor.\n";
+    } else if (code == "INSTALL_CANCELED_BY_USER" || code == "INSTALL_FAILED_ABORTED" || code == "TIMEOUT") {
+        h = L"A instalação não foi confirmada no celular.\nDesbloqueie o celular e, quando ele perguntar, toque em \"Instalar\".\n";
+    } else if (code == "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
+        h = L"O app CelMonitor do celular foi instalado de outra origem (assinatura diferente) e não pode ser atualizado por cima.\n"
+            L"Desinstale o CelMonitor do celular; o PC instala a versão certa.\n";
+    } else if (code == "INSTALL_FAILED_INSUFFICIENT_STORAGE") {
+        h = L"Falta espaço no celular para instalar o app. Libere espaço no celular.\n";
+    } else {
+        h = L"Não foi possível instalar o app no celular (detalhes na mensagem acima).\n"
+            L"Se continuar, instale à mão o CelMonitor.apk que está na pasta do programa.\n";
+    }
+    h += L"Depois clique em Conectar (ou reconecte o cabo) para tentar de novo.";
+    if (hadOldApp) h += L"\nEnquanto isso, a versão antiga do app continua funcionando.";
+    return h;
+}
+
+}  // namespace
+
+// Installs the app bundled with CelMonitor when the phone has none or an older version, before connecting.
+// Runs once per phone arrival or Connect click. Returns false when this tick must not go on connecting.
+bool Controller::EnsureAppUpToDate(const PhoneDevice& dev) {
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        if (appChecked_) return !installBlocked_;
+    }
+    std::optional<uint32_t> installed = adb_.InstalledVersionCode(dev.serial);
+    std::wstring apk = FindApk();
+    uint32_t bundled = apk.empty() ? 0 : ApkVersionCode(apk);
+    if (!installed) {
+        // Could not ask the phone (it may be going away): connect anyway; the connection path reports real problems.
+        Log::Warn("could not read the app version on %s", dev.serial.c_str());
+        std::lock_guard<std::mutex> lock(lock_);
+        appChecked_ = true;
+        return true;
+    }
+    Log::Info("phone app versionCode %u, bundled APK versionCode %u", *installed, bundled);
+    const bool hadOldApp = *installed != 0;
+    if (apk.empty() || (hadOldApp && bundled <= *installed)) {
+        std::lock_guard<std::mutex> lock(lock_);
+        appChecked_ = true;  // up to date, or nothing we can install
+        if (!hadOldApp) {
+            installTried_ = true;
+            state_.message = L"O app não está instalado no celular e o CelMonitor.apk não foi encontrado ao lado do programa.";
+            state_.messageIsError = true;
+        }
+        return true;
+    }
+
+    SetPhase(Phase::InstallingApp, hadOldApp ? L"Atualizando o app no celular..." : L"Instalando o app no celular...");
+    std::string code;
+    Status s = adb_.InstallApk(dev.serial, apk, &code);
+    std::wstring maker = s.ok ? L"" : adb_.Manufacturer(dev.serial);
+    std::lock_guard<std::mutex> lock(lock_);
+    appChecked_ = true;
+    installTried_ = true;
+    if (s.ok) {
+        Log::Info("phone app %s to versionCode %u", hadOldApp ? "updated" : "installed", bundled);
+        installHelp_.clear();
+        state_.message = hadOldApp ? L"App do celular atualizado." : L"App instalado no celular.";
+        state_.messageIsError = false;
+        launchAllowed_ = true;  // installing stopped the app: open it again
+        return true;
+    }
+    installHelp_ = InstallFailureHelp(code, maker, hadOldApp);
+    state_.message = s.message;
+    state_.messageIsError = true;
+    if (hadOldApp) return true;  // the older app still works: connect with it, keep the explanation visible
+    installBlocked_ = true;
+    state_.phase = Phase::InstallFailed;
+    state_.status = PhaseText(Phase::InstallFailed);
+    return false;
+}
+
 void Controller::StartSession(std::unique_ptr<IConnection> conn) {
     HostSession::Events ev;
     ev.onWarning = [this](const Status& w) { SetMessage(w.message, false); };
@@ -286,6 +396,7 @@ void Controller::ReapSession() {
     } else {
         // Failure (cable, app crash, timeout): retry, reopening the app, with a growing delay.
         launchAllowed_ = true;
+        if (!installBlocked_) appChecked_ = false;  // the app may have been uninstalled: check it again (cheap)
         ++failures_;
         nextAttempt_ = GetTickCount64() + std::min<ULONGLONG>(2000ull * failures_, 10000);
         state_.message = L"Conexão encerrada: " + why;
@@ -397,12 +508,17 @@ bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
 // First-steps guide: what the user has to do next, with brand-specific instructions when the phone is recognized.
 void Controller::UpdateHelp() {
     Phase phase;
+    std::wstring installHelp;
     {
         std::lock_guard<std::mutex> lock(lock_);
         phase = state_.phase;
+        installHelp = installHelp_;
     }
     std::wstring help;
     switch (phase) {
+    case Phase::InstallFailed:
+        help = installHelp;
+        break;
     case Phase::NoDriver:
         help = L"O driver do monitor virtual não está instalado ou está parado.\nExecute o instalador do CelMonitor novamente.";
         break;
@@ -437,6 +553,9 @@ void Controller::UpdateHelp() {
     default:
         break;
     }
+    // A failed update of an app that still works: keep saying how to fix it while connecting/connected.
+    if (!installHelp.empty() && (phase == Phase::Connecting || phase == Phase::Connected || phase == Phase::WaitingApp))
+        help = L"O app do celular não pôde ser atualizado. " + installHelp;
     std::lock_guard<std::mutex> lock(lock_);
     state_.help = help;
 }
@@ -487,6 +606,9 @@ void Controller::UpdateConnection() {
         launchAllowed_ = true;
         failures_ = 0;
         installTried_ = false;
+        appChecked_ = false;
+        installBlocked_ = false;
+        installHelp_.clear();
         aoaFailures_ = 0;
         aoaDisabledFor_.clear();
         state_.serial.clear();
@@ -502,6 +624,9 @@ void Controller::UpdateConnection() {
         launchAllowed_ = true;  // a phone just arrived: opening the app is what the user expects
         failures_ = 0;
         installTried_ = false;
+        appChecked_ = false;
+        installBlocked_ = false;
+        installHelp_.clear();
         nextAttempt_ = 0;
         state_.serial = dev->serial;
         state_.deviceModel = dev->model;
@@ -513,10 +638,14 @@ void Controller::UpdateConnection() {
         return;
     }
 
-    bool launch;
     {
         std::lock_guard<std::mutex> lock(lock_);
         if (GetTickCount64() < nextAttempt_) return;
+    }
+    if (!EnsureAppUpToDate(*dev)) return;
+    bool launch;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
         launch = launchAllowed_;
     }
     if (TryAoa(*dev, launch)) return;
@@ -555,30 +684,15 @@ void Controller::UpdateConnection() {
 
     std::lock_guard<std::mutex> lock(lock_);
     if (missing) {
-        if (installTried_) {
-            state_.phase = Phase::WaitingApp;
-            state_.status = L"Instale o app CelMonitor no celular";
-            nextAttempt_ = GetTickCount64() + 5000;
+        if (!installTried_) {
+            // The app disappeared after the version check (uninstalled meanwhile): check again, which installs it.
+            appChecked_ = false;
+            nextAttempt_ = 0;
             return;
         }
-        installTried_ = true;
-        std::wstring apk = FindApk();
-        if (apk.empty()) {
-            state_.phase = Phase::WaitingApp;
-            state_.status = L"Instale o app CelMonitor no celular";
-            state_.message = L"O app não está instalado no celular e o CelMonitor.apk não foi encontrado ao lado do programa.";
-            state_.messageIsError = true;
-            return;
-        }
-        state_.phase = Phase::InstallingApp;
-        state_.status = PhaseText(Phase::InstallingApp);
-        lock_.unlock();
-        Status is = adb_.InstallApk(dev->serial, apk);
-        lock_.lock();
-        state_.message = is.ok ? L"App instalado no celular." : is.message;
-        state_.messageIsError = !is.ok;
-        nextAttempt_ = 0;
-        launchAllowed_ = true;
+        state_.phase = Phase::WaitingApp;
+        state_.status = L"Instale o app CelMonitor no celular";
+        nextAttempt_ = GetTickCount64() + 5000;
         return;
     }
     if (launch) {
