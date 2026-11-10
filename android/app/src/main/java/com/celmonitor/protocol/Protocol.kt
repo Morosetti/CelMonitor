@@ -24,6 +24,7 @@ object Proto {
     const val CAP_H264 = 1 shl 0
     const val CAP_H265 = 1 shl 1
     const val CAP_AV1 = 1 shl 2
+    const val CAP_JPEG = 1 shl 3
     const val CAP_TOUCH = 1 shl 8
     const val CAP_LOW_LATENCY_DECODER = 1 shl 9
 
@@ -64,7 +65,9 @@ object MsgType {
 enum class Codec(val wire: Int, val mime: String, val capBit: Int) {
     H264(1, "video/avc", Proto.CAP_H264),
     H265(2, "video/hevc", Proto.CAP_H265),
-    AV1(3, "video/av01", Proto.CAP_AV1);
+    AV1(3, "video/av01", Proto.CAP_AV1),
+    /** Every frame is a full JFIF picture (BT.601 full range). For devices without MediaCodec (Android 4.0). */
+    JPEG(4, "image/jpeg", Proto.CAP_JPEG);
 
     /** Bit used in DisplayMode.codecMask. */
     val maskBit get() = 1 shl (wire - 1)
@@ -151,7 +154,7 @@ class Writer(capacity: Int = 64) {
     private fun ensure(n: Int) {
         if (buf.remaining() >= n) return
         val bigger = ByteBuffer.allocate(maxOf(buf.capacity() * 2, buf.position() + n)).order(ByteOrder.LITTLE_ENDIAN)
-        buf.flip(); bigger.put(buf); buf = bigger
+        (buf as java.nio.Buffer).flip(); bigger.put(buf); buf = bigger  // Buffer.flip(): ByteBuffer.flip() is API 34+
     }
 
     fun u8(v: Int) = apply { ensure(1); buf.put(v.toByte()) }

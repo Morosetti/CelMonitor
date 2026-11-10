@@ -18,7 +18,7 @@ Windows ─ driver de monitor virtual (IddCx) ─ captura na GPU ─ H.264 por h
 | Monitor virtual | driver Indirect Display (UMDF 2 / IddCx) próprio |
 | Captura e vídeo | Desktop Duplication, conversão de cor na GPU, H.264 pelo Media Foundation |
 | USB | Android Open Accessory 2.0 + WinUSB (principal) e ADB (alternativa automática) |
-| App Android | Kotlin, MediaCodec + SurfaceView (Android 10+) |
+| App Android | Kotlin, MediaCodec + SurfaceView (Android 6+); aparelhos antigos (Android 4.0+) recebem imagens JPEG só das partes que mudaram |
 | App Windows | C++20 / Win32, fica na bandeja e conecta sozinho |
 
 ## Para usar
@@ -44,6 +44,7 @@ Documentos técnicos:
 | Toque do celular controlando o PC (multitoque, gestos do Windows) | pronto |
 | Atalho para levar a janela ativa ao celular e de volta | pronto |
 | Atualização automática do app do celular | pronto |
+| Tablets/celulares antigos sem decodificador de vídeo (Android 4.0+, modo JPEG) e brilho da tela pelo app | pronto |
 
 ## Licença
 

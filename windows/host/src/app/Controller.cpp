@@ -452,6 +452,9 @@ bool Controller::TryAoa(const PhoneDevice& dev, bool launch) {
             StartSession(std::move(conn));
             return true;
         }
+        char why[512];
+        WideCharToMultiByte(CP_UTF8, 0, s.message.c_str(), -1, why, sizeof(why), nullptr, nullptr);
+        Log::Warn("AOA open failed (%s): %s", dev.serial.c_str(), why);
         std::lock_guard<std::mutex> lock(lock_);
         state_.message = s.message;
         state_.messageIsError = true;

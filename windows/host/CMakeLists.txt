@@ -19,6 +19,7 @@ add_library(celmon_core STATIC
     src/capture/DesktopDuplicator.cpp
     src/encoder/ColorConverter.cpp
     src/encoder/MfEncoder.cpp
+    src/encoder/JpegEncoder.cpp
     src/pipeline/VideoPipeline.cpp
     src/transport/AdbTransport.cpp
     src/transport/AoaTransport.cpp
@@ -30,7 +31,7 @@ add_library(celmon_core STATIC
     src/util/ProcessStats.cpp
 )
 target_include_directories(celmon_core PUBLIC src ${REPO_ROOT}/common ${REPO_ROOT}/windows/shared)
-target_link_libraries(celmon_core PUBLIC setupapi d3d11 dxgi mf mfplat mfuuid avrt winmm ws2_32)
+target_link_libraries(celmon_core PUBLIC setupapi d3d11 dxgi mf mfplat mfuuid avrt winmm ws2_32 windowscodecs)
 
 # The app (Win32 UI)
 add_executable(CelMonitor WIN32 src/ui/main.cpp src/ui/MainWindow.cpp src/ui/AdvancedDialog.cpp src/ui/WindowMover.cpp src/util/Autostart.cpp res/CelMonitor.rc)

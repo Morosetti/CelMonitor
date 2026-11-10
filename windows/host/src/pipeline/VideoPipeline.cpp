@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 
+#include "../encoder/JpegEncoder.h"
 #include "../encoder/MfEncoder.h"
 #include "../util/Log.h"
 
@@ -88,7 +89,8 @@ bool VideoPipeline::SetupEncoder(uint32_t w, uint32_t h) {
     encoder_.reset();
     w &= ~1u;  // NV12 needs even dimensions
     h &= ~1u;
-    Status s = converter_.Init(d3d_, dup_.Width(), dup_.Height(), w, h);
+    const bool jpeg = cfg_.codec == proto::Codec::Jpeg;
+    Status s = converter_.Init(d3d_, dup_.Width(), dup_.Height(), w, h, jpeg);
     if (!s.ok) { ReportError(s); return false; }
 
     {
@@ -112,7 +114,11 @@ bool VideoPipeline::SetupEncoder(uint32_t w, uint32_t h) {
     ec.height = h;
     ec.fps = fps_;
     ec.bitrateKbps = cfg_.bitrateKbps ? cfg_.bitrateKbps : DefaultBitrateKbps(w, h, fps_);
-    auto enc = std::make_unique<MfEncoder>();
+    ec.quality = pendingQuality_ ? pendingQuality_.exchange(0) : cfg_.quality;
+    cfg_.quality = ec.quality;
+    std::unique_ptr<IVideoEncoder> enc;
+    if (jpeg) enc = std::make_unique<JpegEncoder>();
+    else enc = std::make_unique<MfEncoder>();
     s = enc->Init(d3d_, ec, [this](EncodedFrame&& f) { OnEncoded(std::move(f)); });
     if (!s.ok) { ReportError(s); return false; }
     encoder_ = std::move(enc);
@@ -126,7 +132,8 @@ bool VideoPipeline::SetupEncoder(uint32_t w, uint32_t h) {
     }
     lastError_.clear();
     keyframeRequested_ = true;
-    Log::Info("stream %ux%u @%u fps, %u kbps", w, h, ec.fps, ec.bitrateKbps);
+    if (jpeg) Log::Info("stream %ux%u @%u fps, JPEG quality %.2f", w, h, ec.fps, JpegEncoder::QualityFor(ec.quality));
+    else Log::Info("stream %ux%u @%u fps, %u kbps", w, h, ec.fps, ec.bitrateKbps);
     if (events_.onStreamStart) events_.onStreamStart(w, h, encoder_->Name());
     return true;
 }
@@ -191,6 +198,7 @@ void VideoPipeline::OnEncoded(EncodedFrame&& f) {
         for (auto& s : surfaces_)
             if (s.busyPts != 0 && s.busyPts <= f.ptsUs) s.busyPts = 0;
     }
+    if (f.data.empty() && f.config.empty()) return;  // JPEG: nothing visible changed, nothing to send
     {
         std::lock_guard<std::mutex> lock(statsLock_);
         ++stats_.framesEncoded;
@@ -216,9 +224,11 @@ void VideoPipeline::Run() {
         }
         if (encoder_->Failed()) {
             ReportError(Status::Error(L"O encoder de vídeo falhou; reiniciando..."));
+            Sleep(500);  // never spin when the encoder fails every frame
             if (!SetupEncoder(dup_.Width(), dup_.Height())) { Sleep(1000); continue; }
         }
         if (uint32_t kbps = pendingBitrate_.exchange(0)) encoder_->SetBitrate(kbps);
+        if (uint32_t q = pendingQuality_.exchange(0)) { cfg_.quality = q; encoder_->SetQuality(q); }
 
         // Capture and encode overlap: the desktop is drained continuously (keeping only the newest image) while the
         // encoder works; as soon as the encoder, the receiver and the fps cap allow, the newest image is encoded, so

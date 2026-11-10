@@ -24,7 +24,7 @@ import java.io.OutputStream
  */
 class AccessorySource(private val context: Context) : ConnectionSource {
     override val name = "USB (acessório)"
-    private val usb = context.getSystemService(UsbManager::class.java)
+    private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
     private val lock = Object()
     @Volatile private var closed = false
     @Volatile private var pending: Connection? = null

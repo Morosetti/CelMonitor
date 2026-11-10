@@ -11,7 +11,8 @@ windows/
   host/src/
     display/              VirtualDisplay: cria/remove o monitor via IOCTL, acha-o no Windows
     capture/              D3DContext (GPU do monitor), DesktopDuplicator
-    encoder/              ColorConverter (BGRA->NV12 na GPU), IVideoEncoder, MfEncoder (MFT de hardware)
+    encoder/              ColorConverter (BGRA->NV12 na GPU), IVideoEncoder, MfEncoder (MFT de hardware),
+                          JpegEncoder (tiles JPEG das áreas que mudaram, via WIC, para aparelhos antigos)
     pipeline/             VideoPipeline: captura -> conversão -> encode, recuperação de erros
     transport/            IConnection, AdbTransport, AoaTransport (+ sincronização do canal)
     session/              HostSession: protocolo, controle de fluxo, heartbeat/watchdog
@@ -26,7 +27,8 @@ android/app/src/main/java/com/celmonitor/
   protocol/               espelho Kotlin do protocolo
   transport/              AdbSocketSource, AccessorySource, AccessorySync
   session/                ClientSession, ConnectionManager
-  decoder/                VideoDecoder (MediaCodec -> Surface)
+  decoder/                FrameDecoder; VideoDecoder (MediaCodec -> Surface, Android 6+);
+                          JpegDecoder (tiles JPEG -> cópia da tela -> Surface, Android 4.0+)
   input/                  TouchMapper (MotionEvent -> INPUT_TOUCH)
   display/                resolução/decoders do aparelho -> modos oferecidos ao PC
 docs/                     análise técnica, protocolo, instalação, este guia
@@ -91,7 +93,7 @@ Diagnóstico por etapa com o `celmon-cli`:
 
 - `build\host\Release\celmon-tests.exe` — protocolo C++; gera `common/protocol/testvectors/`.
 - `android\gradlew testDebugUnitTest` — protocolo Kotlin (inclui os vetores do C++: bytes idênticos nos dois lados) e sincronização do acessório.
-- Roteiro manual (celular real): Windows 10/11; Android 10+; USB 2.0 e 3.x; paisagem/retrato; troca de resolução com a transmissão ativa; desconectar/reconectar o cabo; tela do celular apagando; fechar o app do celular; jogo usando a GPU; resolução não suportada; driver ausente; ADB ausente.
+- Roteiro manual (celular real): Windows 10/11; Android 6+ (H.264) e um aparelho Android 4.x (JPEG); USB 2.0 e 3.x; paisagem/retrato; troca de resolução com a transmissão ativa; desconectar/reconectar o cabo; tela do celular apagando; fechar o app do celular; jogo usando a GPU; resolução não suportada; driver ausente; ADB ausente.
 
 ## Adicionar um codec
 

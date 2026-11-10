@@ -40,11 +40,13 @@ enum Capability : uint32_t {
     CapH264 = 1u << 0,
     CapH265 = 1u << 1,
     CapAV1 = 1u << 2,
+    CapJpeg = 1u << 3,
     CapTouch = 1u << 8,
     CapLowLatencyDecoder = 1u << 9,
 };
 
-enum class Codec : uint8_t { H264 = 1, H265 = 2, AV1 = 3 };
+// Jpeg: every frame is a complete JFIF picture (BT.601 full range), for devices without a usable hardware decoder.
+enum class Codec : uint8_t { H264 = 1, H265 = 2, AV1 = 3, Jpeg = 4 };
 
 enum class DisconnectReason : uint16_t {
     Normal = 0,
@@ -437,7 +439,7 @@ inline std::optional<StreamConfig> parseStreamConfig(const uint8_t* p, size_t n)
     m.streamId = r.u32(); m.width = r.u32(); m.height = r.u32(); m.fps = r.u16();
     uint8_t codec = r.u8(); m.orientation = r.u8(); m.bitrateKbps = r.u32(); m.flags = r.u32();
     if (!r.ok() || !validDimension(m.width) || !validDimension(m.height) || !validFps(m.fps) ||
-        codec < 1 || codec > 3 || m.orientation > 1)
+        codec < 1 || codec > 4 || m.orientation > 1)
         return std::nullopt;
     m.codec = Codec(codec);
     return m;

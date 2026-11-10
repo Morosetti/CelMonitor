@@ -156,7 +156,7 @@ Drivers a instalar no PC: `CelMonIdd` (nosso), INF WinUSB do modo acessório (no
 ## 9. Stack recomendada
 
 - **Windows:** C++20, MSBuild/Visual Studio 2022+, WDK (NuGet) para o driver; Win32 para a UI (um único executável, sem runtime extra). C# seria agradável para a UI, mas obrigaria uma ponte C++/C# para o pipeline de vídeo inteiro; Rust ainda não tem suporte maduro a IddCx.
-- **Android:** Kotlin, minSdk 29 (Android 10), MediaCodec + SurfaceView, API de USB Accessory.
+- **Android:** Kotlin, minSdk 15 (Android 4.0.3), MediaCodec + SurfaceView a partir do Android 6 (abaixo disso, imagens JPEG por tiles), API de USB Accessory.
 - **Vídeo:** H.264 por MFT de hardware; HEVC opcional.
 - **USB:** AOA 2.0 + WinUSB bulk; ADB forward como fallback.
 

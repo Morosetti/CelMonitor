@@ -4,7 +4,7 @@
 
 - Windows 10 versão 2004 ou mais recente, 64 bits (Windows 11 incluso).
 - Placa de vídeo com encoder H.264 por hardware (praticamente todas as NVIDIA, AMD e Intel dos últimos 10 anos).
-- Celular com Android 10 ou mais recente.
+- Celular ou tablet com Android 4.0.3 ou mais recente. Do Android 6 em diante a imagem vem em vídeo H.264 por hardware (60 fps); nos mais antigos, em imagens JPEG só das áreas que mudaram (ver *Aparelhos antigos*).
 - Cabo USB **de dados** (alguns cabos só carregam).
 - Internet durante a instalação (para baixar o ADB do Google).
 
@@ -47,7 +47,7 @@ Da próxima vez basta plugar o cabo: se o CelMonitor estiver na bandeja, ele con
 - **Toque:** tocar na imagem do celular controla o PC como numa tela touch: toque = clique, segurar = botão direito, arrastar = rolar ou arrastar, pinça = zoom (nos apps que aceitam). Dá para desligar em *Tocar na tela do celular controla o PC* (fica salvo por celular). Janelas abertas como administrador não aceitam o toque (limitação do Windows).
 - **Atalho Ctrl+Alt+M:** leva a janela ativa para o monitor do celular; apertando de novo, ela volta para o monitor de onde veio (maximizada continua maximizada). Troque a combinação no campo *Atalho* da janela.
 - **Atualização do app do celular:** ao conectar, o CelMonitor compara a versão do app no celular com a que veio com o programa e atualiza sozinho se precisar (*Atualizando o app no celular...*). Depois de uma instalação nova, o celular pergunta de novo *Abrir CelMonitor para este acessório USB?*: marque *Usar por padrão* e toque em **OK**.
-- **No celular**, o botão ▼ no canto abre o menu: sair do modo monitor, orientação, qualidade, FPS e informações da conexão.
+- **No celular**, o botão ▼ no canto abre o menu: sair do modo monitor, orientação, qualidade, FPS, **brilho da tela** e informações da conexão. O brilho fica salvo no aparelho e vale só enquanto ele é monitor; é o que mais pesa na bateria (ver *Bateria*).
 - **Na janela do PC:** o topo mostra o estado, o celular e os números ao vivo (resolução, FPS, atraso); abaixo, *Próximo passo* diz o que fazer e *Tela do celular* tem resolução, orientação, FPS máximo, qualidade e codec. Tudo fica salvo **por celular**. Os números técnicos (taxa, encode, RTT, CPU/GPU, encoder) ficam em **Detalhes técnicos**.
 
 ## Celular diferente? Configurações avançadas
@@ -63,6 +63,27 @@ Cada celular tem o seu próprio perfil. Se algo não funcionar bem num aparelho,
 
 *"Usar também como padrão para novos celulares"* aplica os mesmos valores a aparelhos conectados pela primeira vez. As mudanças valem a partir da próxima conexão. As configurações ficam em `%LOCALAPPDATA%\CelMonitor\settings.ini` (uma seção por celular).
 
+## Aparelhos antigos (Android 4.0 a 5.x)
+
+Sem o decodificador de vídeo moderno, o PC manda imagens JPEG, e só das faixas da tela que mudaram. Medido num Galaxy Tab 2 10.1 (Android 4.0.3):
+
+- janelas, texto e uma animação pequena: 25–30 fps, ~25 ms de atraso;
+- a tela inteira mudando (vídeo em tela cheia): ~14 fps, ~135 ms de atraso: é o limite do processador do aparelho.
+
+A resolução oferecida já desconta a barra do sistema, que tablets com Android 4.0 não deixam esconder (no Tab 2: 1280 × 752). O codec e o FPS são escolhidos sozinhos; o combo *Codec* não se aplica.
+
+## Bateria
+
+Pela USB de um PC, o aparelho recebe pouca corrente (~500 mA), e a tela acesa consome quase tudo isso. Medido no Galaxy Tab 2 transmitindo uma área de trabalho parada:
+
+| Brilho (menu ▼ > Brilho da tela) | Bateria |
+|---|---|
+| Mínimo ou Baixo | **carrega** (~+100 mA) |
+| Médio | descarrega devagar (~−110 mA) |
+| Máximo | descarrega rápido (~−500 mA) |
+
+Para gastar menos: use o brilho *Baixo*; desligue o Wi-Fi e o Bluetooth (o CelMonitor só usa o cabo); desligue a sincronização automática das contas; e desative os apps que você não usa (*Configurações > Aplicativos > [app] > Desativar*; em apps atualizados, primeiro *Desinstalar atualizações*). Num aparelho antigo, apps que ficam tentando sincronizar podem gastar mais que a própria tela: no Tab 2 testado, o Google+ (serviço já encerrado) usava 60% do processador o tempo todo.
+
 ## Problemas comuns
 
 | Sintoma | O que fazer |
@@ -75,6 +96,7 @@ Cada celular tem o seu próprio perfil. Se algo não funcionar bem num aparelho,
 | Conexão direta cai ao começar o vídeo | Configurações avançadas: reduza o *tamanho da transferência USB*. |
 | Imagem escura/amarelada | É o *Luz Noturna* do Windows ou o *Modo de leitura* do celular. |
 | "Não foi possível instalar o app no celular" | Siga o *Próximo passo*. Na Xiaomi, ative *Instalar via USB* nas Opções do desenvolvedor (pode pedir a conta Mi) e aceite a pergunta no celular durante a instalação. |
+| Demora ~40 s para conectar e entra pelo ADB, em aparelho antigo | Acontece se o app do aparelho foi encerrado no meio da transmissão: a conexão direta fica travada no aparelho até o cabo ser reconectado. Desconecte e reconecte o cabo. |
 | Transferência de arquivos (MTP) sumiu | Enquanto a conexão direta está ativa o celular fica em modo acessório; desconecte e reconecte o cabo para voltar ao normal. |
 
 Log detalhado: botão **Pasta de logs** (arquivo `celmonitor.log`).

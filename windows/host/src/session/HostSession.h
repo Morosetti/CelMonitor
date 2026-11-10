@@ -106,6 +106,10 @@ private:
     uint32_t streamId_ = 0;
     bool streamReady_ = false;
     uint32_t lastFrameSent_ = 0, lastFrameAcked_ = 0;
+    // Set from the phone's HELLO: highest fps it can show, and frames allowed in flight (1 for JPEG: the next picture
+    // is captured only once the phone starts decoding the previous one, so a slow device never gets stale pictures).
+    std::atomic<uint32_t> fpsCap_{60};
+    std::atomic<uint32_t> flowWindow_{3};
     std::atomic<uint64_t> lastReceivedUs_{0};
     // Touch (reader thread only, except the atomics)
     std::atomic<bool> touchEnabled_{true};

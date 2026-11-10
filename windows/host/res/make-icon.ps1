@@ -112,6 +112,29 @@ Write-Ico $idle $sizes (Join-Path $PSScriptRoot "CelMonitorIdle.ico")
 $bitmaps[256].Save((Join-Path $PSScriptRoot "..\..\..\docs\logo.png"), [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Host "CelMonitor.ico, CelMonitorIdle.ico e docs\logo.png gerados"
 
+# Android launchers without adaptive icons (Android 4.x-7.x): the logo on a rounded light tile, one PNG per density.
+$mipmaps = [ordered]@{ mdpi = 48; hdpi = 72; xhdpi = 96; xxhdpi = 144; xxxhdpi = 192 }
+foreach ($d in $mipmaps.Keys) {
+    $s = $mipmaps[$d]
+    $tile = New-Object System.Drawing.Bitmap $s, $s
+    $g = [System.Drawing.Graphics]::FromImage($tile)
+    $g.SmoothingMode = 'AntiAlias'
+    $g.PixelOffsetMode = 'HighQuality'
+    $g.InterpolationMode = 'HighQualityBicubic'
+    $g.Clear([System.Drawing.Color]::Transparent)
+    $m = $s * 0.04
+    $g.FillPath((New-Object System.Drawing.SolidBrush (Color '#F1F5FB')), (RoundRect $m $m ($s - 2 * $m) ($s - 2 * $m) ($s * 0.2)))
+    $ls = [int][Math]::Round($s * 0.8)
+    $logo = Draw-Logo $ls
+    # The drawing spans y 4..30.5 of its 32-unit grid: shift it up so it sits in the middle of the tile.
+    $g.DrawImage($logo, [float](($s - $ls) / 2), [float](($s - $ls) / 2 - $ls * 1.25 / 32), [float]$ls, [float]$ls)
+    $g.Dispose()
+    $dir = Join-Path $PSScriptRoot "..\..\..\android\app\src\main\res\mipmap-$d"
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    $tile.Save((Join-Path $dir "ic_launcher.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+}
+Write-Host "android mipmap-*\ic_launcher.png gerados"
+
 # Android: the same geometry as VectorDrawables. The transparent gap around the phone becomes a shape filled
 # with the background colour (the launcher icon's background, or the app's black status screen).
 function RR([double]$x, [double]$y, [double]$w, [double]$h, [double]$r) {

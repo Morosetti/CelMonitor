@@ -2,7 +2,7 @@
 
 namespace celmon {
 
-Status ColorConverter::Init(D3DContext& d3d, uint32_t inW, uint32_t inH, uint32_t outW, uint32_t outH) {
+Status ColorConverter::Init(D3DContext& d3d, uint32_t inW, uint32_t inH, uint32_t outW, uint32_t outH, bool jpeg) {
     inViews_.clear();
     outViews_.clear();
     inW_ = inW; inH_ = inH; outW_ = outW; outH_ = outH;
@@ -19,18 +19,20 @@ Status ColorConverter::Init(D3DContext& d3d, uint32_t inW, uint32_t inH, uint32_
     if (SUCCEEDED(hr)) hr = vdev_->CreateVideoProcessor(enum_.Get(), 0, &vp_);
     if (FAILED(hr)) return Status::Error(L"Falha ao criar o conversor de cor na GPU: " + HrText(hr));
 
-    // Full-range RGB in, BT.709 studio-range YUV out (what H.264 VUI will declare).
+    // Full-range RGB in; YUV out as the receiver expects it: BT.709 studio range (what H.264 VUI declares) or
+    // BT.601 full range (what every JPEG decoder assumes for JFIF).
     ComPtr<ID3D11VideoContext1> vctx1;
     if (SUCCEEDED(vctx_.As(&vctx1))) {
         vctx1->VideoProcessorSetStreamColorSpace1(vp_.Get(), 0, DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
-        vctx1->VideoProcessorSetOutputColorSpace1(vp_.Get(), DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709);
+        vctx1->VideoProcessorSetOutputColorSpace1(
+            vp_.Get(), jpeg ? DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P601 : DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709);
     } else {
         D3D11_VIDEO_PROCESSOR_COLOR_SPACE in = {};
         in.RGB_Range = 0;  // full
         vctx_->VideoProcessorSetStreamColorSpace(vp_.Get(), 0, &in);
         D3D11_VIDEO_PROCESSOR_COLOR_SPACE out = {};
-        out.YCbCr_Matrix = 1;  // BT.709
-        out.Nominal_Range = D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_16_235;
+        out.YCbCr_Matrix = jpeg ? 0 : 1;  // BT.601 / BT.709
+        out.Nominal_Range = jpeg ? D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255 : D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_16_235;
         vctx_->VideoProcessorSetOutputColorSpace(vp_.Get(), &out);
     }
     vctx_->VideoProcessorSetStreamAutoProcessingMode(vp_.Get(), 0, FALSE);
@@ -54,7 +56,7 @@ Status ColorConverter::Init(D3DContext& d3d, uint32_t inW, uint32_t inH, uint32_
     vctx_->VideoProcessorSetStreamDestRect(vp_.Get(), 0, TRUE, &dst);
     vctx_->VideoProcessorSetOutputTargetRect(vp_.Get(), TRUE, &dst);
     D3D11_VIDEO_COLOR black = {};
-    black.YCbCr = {0.0625f, 0.5f, 0.5f, 1.0f};
+    black.YCbCr = {jpeg ? 0.0f : 0.0625f, 0.5f, 0.5f, 1.0f};
     vctx_->VideoProcessorSetOutputBackgroundColor(vp_.Get(), TRUE, &black);
     return Status::Ok();
 }

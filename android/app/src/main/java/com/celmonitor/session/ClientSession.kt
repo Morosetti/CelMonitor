@@ -3,7 +3,7 @@ package com.celmonitor.session
 import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
-import com.celmonitor.decoder.VideoDecoder
+import com.celmonitor.decoder.FrameDecoder
 import com.celmonitor.protocol.ClientSettings
 import com.celmonitor.protocol.Codecs
 import com.celmonitor.protocol.Disconnect
@@ -39,7 +39,7 @@ class ClientSession(
     private val connection: Connection,
     private val hello: Hello,
     private val events: Events,
-) : VideoDecoder.Listener {
+) : FrameDecoder.Listener {
 
     /** All callbacks come from background threads; the UI layer must hop to the main thread. */
     interface Events {
@@ -66,7 +66,7 @@ class ClientSession(
 
     private var config: StreamConfig? = null
     private var surface: Surface? = null
-    private var decoder: VideoDecoder? = null
+    private var decoder: FrameDecoder? = null
     private var generation = 0 // bumps on every config/surface change; stale decoder starts are discarded
     private val decoderExecutor = Executors.newSingleThreadExecutor { Thread(it, "celmon-decoder-setup") }
 
@@ -178,7 +178,7 @@ class ClientSession(
         statFrames += if (h.isCodecConfig) 0 else 1
         statBytes += msg.length
         updateStats()
-        val dec: VideoDecoder?
+        val dec: FrameDecoder?
         synchronized(lock) {
             if (h.streamId != config?.streamId) return // stale stream
             dec = decoder
@@ -211,7 +211,7 @@ class ClientSession(
 
     /** Must release synchronously: the surface is gone when surfaceDestroyed() returns. */
     fun detachSurface() {
-        val old: VideoDecoder?
+        val old: FrameDecoder?
         synchronized(lock) {
             surface = null
             generation++
@@ -230,7 +230,7 @@ class ClientSession(
         val gen: Int
         val cfg: StreamConfig?
         val s: Surface?
-        val old: VideoDecoder?
+        val old: FrameDecoder?
         synchronized(lock) {
             gen = ++generation
             cfg = config
@@ -247,7 +247,7 @@ class ClientSession(
                 if (announce) enqueue(MsgType.STREAM_READY, Codecs.encodeStreamReady(cfg.streamId, 0))
                 return@execute
             }
-            val d = VideoDecoder(cfg, s, this)
+            val d = FrameDecoder.create(cfg, s, this)
             try {
                 d.start()
             } catch (e: Exception) {
@@ -341,7 +341,7 @@ class ClientSession(
         connection.close()
     }
 
-    private fun nowUs() = SystemClock.elapsedRealtimeNanos() / 1000
+    private fun nowUs() = System.nanoTime() / 1000
 
     companion object {
         private const val TAG = "ClientSession"

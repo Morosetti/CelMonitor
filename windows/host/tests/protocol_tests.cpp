@@ -109,12 +109,22 @@ static void WriteVectors() {
     write("stream_config.bin", serialize(c));
 }
 
+void TestStreamConfigCodecs() {
+    StreamConfig c; c.streamId = 3; c.width = 1280; c.height = 752; c.fps = 30; c.codec = Codec::Jpeg;
+    auto b = serialize(c);
+    auto p = parseStreamConfig(b.data(), b.size());
+    CHECK(p && p->codec == Codec::Jpeg && p->width == 1280 && p->height == 752);
+    b[14] = 5;  // codec byte: unknown
+    CHECK(!parseStreamConfig(b.data(), b.size()));
+}
+
 int main() {
     TestHelloRoundTrip();
     TestHelloValidation();
     TestHeader();
     TestInputValidation();
     TestClientSettings();
+    TestStreamConfigCodecs();
     WriteVectors();
     std::printf(g_failures ? "%d FAILURE(S)\n" : "all protocol tests passed\n", g_failures);
     return g_failures ? 1 : 0;

@@ -63,7 +63,7 @@ Uma mudança de resolução/codec/orientação gera novo `STREAM_CONFIG` com `st
 |---|---|
 | u16 | versionMajor (1) |
 | u16 | versionMinor (0) |
-| u32 | capabilities — bit0 H.264, bit1 H.265, bit2 AV1, bit8 touch, bit9 decoder low-latency |
+| u32 | capabilities — bit0 H.264, bit1 H.265, bit2 AV1, bit3 JPEG, bit8 touch, bit9 decoder low-latency |
 | u32 | screenWidth (px, orientação natural) |
 | u32 | screenHeight |
 | u32 | densityDpi |
@@ -85,7 +85,7 @@ Uma mudança de resolução/codec/orientação gera novo `STREAM_CONFIG` com `st
 
 ### 0x0003 STREAM_CONFIG (host → cliente), mín. 24 bytes
 
-`u32 streamId, u32 width, u32 height, u16 fps, u8 codec (1=H.264, 2=H.265, 3=AV1), u8 orientation (0=paisagem, 1=retrato), u32 bitrateKbps, u32 flags`
+`u32 streamId, u32 width, u32 height, u16 fps, u8 codec (1=H.264, 2=H.265, 3=AV1, 4=JPEG), u8 orientation (0=paisagem, 1=retrato), u32 bitrateKbps, u32 flags`
 
 `flags`: bit0 `NO_VENDOR_LOW_LATENCY` — o celular não deve usar as chaves de baixa latência específicas do fabricante no decoder (opção do perfil do celular, para decoders que se comportam mal com elas). Bits desconhecidos são ignorados.
 
@@ -98,6 +98,18 @@ Uma mudança de resolução/codec/orientação gera novo `STREAM_CONFIG` com `st
 `u32 streamId, u32 frameNumber, u64 captureTimeUs, u64 ptsUs, u16 flags (bit0 keyframe, bit1 codec config), u16 reservado` + dados do bitstream em Annex-B até o fim do payload.
 
 Um frame com o bit *codec config* contém **somente** os parameter sets (SPS/PPS, e VPS no H.265) e é entregue ao decoder com `BUFFER_FLAG_CODEC_CONFIG`. O host sempre envia um codec config imediatamente antes de cada IDR.
+
+#### Codec JPEG (4)
+
+Para aparelhos sem decodificador de vídeo utilizável (Android < 6 no app atual). O aparelho só oferece modos com o bit JPEG (`codecMask` bit3) quando não tem outro codec; o host então usa JPEG sem aviso. O payload do VIDEO_FRAME (após os 28 bytes) é uma **atualização**:
+
+`u16 tileCount (1–64), u16 reservado, tileCount × {u16 x, u16 y, u16 w, u16 h, u32 length}` + os `tileCount` arquivos JPEG (JFIF, BT.601 faixa completa, 4:2:0), na mesma ordem.
+
+- Cada tile substitui o retângulo `(x, y, w, h)` da imagem; a área fora dos tiles não mudou. Os tiles ficam dentro de `width × height`, com `y`/`h` múltiplos de 16 (exceto na borda inferior) e `x`/`w` múltiplos de 16 (exceto na borda direita).
+- `flags` bit0 (keyframe) = a atualização cobre a imagem inteira. Depois de recriar o decoder, o aparelho ignora atualizações até um keyframe e pede um com REQUEST_KEYFRAME (como no vídeo).
+- As atualizações dependem umas das outras: o aparelho aplica todas, em ordem (só um keyframe pode descartar as anteriores).
+- O host compara com a última imagem enviada em faixas de 16 linhas, recorta as colunas que mudaram e divide regiões grandes em tiles de até 1280×128 pixels, que o aparelho decodifica em paralelo. Sem mudança visível, nada é enviado.
+- Controle de fluxo: janela de **1** atualização (3 no vídeo). O aparelho envia o FRAME_ACK sem flag ao *começar* a decodificar, então a próxima atualização é capturada e transferida enquanto esta decodifica.
 
 ### 0x0011 FRAME_ACK (cliente → host), 24 bytes
 

@@ -15,6 +15,7 @@ struct EncoderConfig {
     uint32_t height = 1080;
     uint32_t fps = 60;
     uint32_t bitrateKbps = 12000;
+    uint32_t quality = 50;  // 1..100; used by encoders without a bitrate (JPEG)
 };
 
 class IVideoEncoder {
@@ -29,6 +30,7 @@ public:
     // nv12 must stay untouched until a frame with ptsUs >= this one is output.
     virtual Status Encode(ID3D11Texture2D* nv12, uint64_t ptsUs, uint64_t captureTimeUs, bool forceKeyframe) = 0;
     virtual Status SetBitrate(uint32_t kbps) = 0;
+    virtual void SetQuality(uint32_t /*quality*/) {}  // video encoders follow the bitrate instead
     virtual void Shutdown() = 0;
     virtual std::wstring Name() const = 0;
     // Set when the encoder hit an unrecoverable error (reported to the UI, pipeline restarts it).

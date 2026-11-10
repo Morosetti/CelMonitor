@@ -16,6 +16,12 @@
     <string name="menu_quality_medium">Média</string>
     <string name="menu_quality_high">Alta</string>
     <string name="menu_fps">FPS</string>
+    <string name="menu_brightness">Brilho da tela</string>
+    <string name="brightness_system">Do sistema</string>
+    <string name="brightness_min">Mínimo (economiza bateria)</string>
+    <string name="brightness_low">Baixo</string>
+    <string name="brightness_medium">Médio</string>
+    <string name="brightness_max">Máximo</string>
     <string name="menu_info">Informações da conexão</string>
     <string name="close">Fechar</string>
 </resources>

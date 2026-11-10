@@ -1,4 +1,4 @@
-// Capture → GPU color conversion → hardware encode, on its own thread.
+// Capture → GPU color conversion → hardware encode (or JPEG pictures for old devices), on its own thread.
 // Recovers by itself from mode changes, secure-desktop interruptions and encoder failures, reporting each problem.
 #pragma once
 
@@ -19,6 +19,7 @@ struct PipelineConfig {
     proto::Codec codec = proto::Codec::H264;
     uint32_t fps = 60;
     uint32_t bitrateKbps = 12000;  // 0 = derive from resolution/fps
+    uint32_t quality = 50;         // 1..100, JPEG only
 };
 
 struct PipelineEvents {
@@ -56,6 +57,7 @@ public:
     void RequestKeyframe() { keyframeRequested_ = true; }
     void SetFps(uint32_t fps) { fps_ = fps; }
     void SetBitrate(uint32_t kbps);
+    void SetQuality(uint32_t quality) { pendingQuality_ = quality; }
     PipelineStats Stats() const;
     std::wstring EncoderName() const;
 
@@ -83,6 +85,7 @@ private:
     std::atomic<bool> keyframeRequested_{true};
     std::atomic<uint32_t> fps_{60};
     std::atomic<uint32_t> pendingBitrate_{0};
+    std::atomic<uint32_t> pendingQuality_{0};
 
     D3DContext d3d_;
     DesktopDuplicator dup_;

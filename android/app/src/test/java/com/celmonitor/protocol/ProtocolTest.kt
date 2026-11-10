@@ -48,6 +48,12 @@ class ProtocolTest {
         assertThrows(ProtocolException::class.java) { Codecs.parseStreamConfig(b2) }
     }
 
+    @Test fun streamConfigJpeg() {
+        val cfg = StreamConfig(3, 1280, 752, 30, Codec.JPEG, 0, 0, 0)
+        assertEquals(cfg, Codecs.parseStreamConfig(Codecs.encode(cfg)))
+        assertEquals(8, Codec.JPEG.maskBit)
+    }
+
     @Test fun channelRoundTripAndIgnorableUnknown() {
         val out = ByteArrayOutputStream()
         val tx = MessageChannel(ByteArrayInputStream(ByteArray(0)), out)

@@ -48,7 +48,9 @@ class AdbSocketSource : ConnectionSource {
     override fun close() {
         closed = true
         // LocalServerSocket.close() does not wake accept() on all versions; connecting to it does.
-        runCatching { LocalSocket().use { it.connect(android.net.LocalSocketAddress(SOCKET_NAME)) } }
+        val waker = LocalSocket()  // not Closeable before Android 4.2: no use {}
+        runCatching { waker.connect(android.net.LocalSocketAddress(SOCKET_NAME)) }
+        runCatching { waker.close() }
         runCatching { server?.close() }
         server = null
     }

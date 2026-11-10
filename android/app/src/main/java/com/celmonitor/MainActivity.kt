@@ -87,6 +87,7 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
     private fun showStatus(title: String, detail: String, error: String?) {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         showSystemBars()
+        applyBrightness(BRIGHTNESS_SYSTEM)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         videoFrame.visibility = View.GONE
         menuButton.visibility = View.GONE
@@ -104,6 +105,7 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
         requestedOrientation = if (c.width >= c.height) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         hideSystemBars()
+        applyBrightness(brightness)
         statusPanel.visibility = View.GONE
         videoFrame.setAspect(c.width, c.height)
         videoFrame.visibility = View.VISIBLE
@@ -121,6 +123,11 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
                 it.hide(WindowInsets.Type.systemBars())
                 it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
+        } else if (Build.VERSION.SDK_INT < 19) {
+            // Android 4.0-4.3: tablets cannot hide their system bar (and phones show it again on the first touch,
+            // swallowing it): only dim its icons ("lights out"). The stream modes already leave room for it.
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LOW_PROFILE
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
@@ -182,7 +189,12 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
             add(3, 41, 0, "30")
             add(3, 42, 1, "60")
         }
-        m.add(0, 5, 4, R.string.menu_info)
+        m.addSubMenu(0, 6, 4, R.string.menu_brightness).apply {
+            BRIGHTNESS_LEVELS.forEachIndexed { i, (label, _) -> add(4, 61 + i, i, label) }
+            setGroupCheckable(4, true, true)
+            BRIGHTNESS_LEVELS.indexOfFirst { it.second == brightness }.takeIf { it >= 0 }?.let { getItem(it).isChecked = true }
+        }
+        m.add(0, 5, 5, R.string.menu_info)
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> connections.pause()
@@ -194,11 +206,30 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
                 41 -> connections.sendSettings(ClientSettings(ClientSettings.MASK_FPS, 30, 0, 0))
                 42 -> connections.sendSettings(ClientSettings(ClientSettings.MASK_FPS, 60, 0, 0))
                 5 -> showInfo()
+                in 61 until 61 + BRIGHTNESS_LEVELS.size -> {
+                    brightness = BRIGHTNESS_LEVELS[item.itemId - 61].second
+                    applyBrightness(brightness)
+                }
                 else -> return@setOnMenuItemClickListener false
             }
             true
         }
         popup.show()
+    }
+
+    // ------------------------------------------------------------------ brightness
+
+    /** Screen brightness in monitor mode (the screen is what drains the battery most); remembered on this device. */
+    private var brightness: Float
+        get() = runCatching { getSharedPreferences(PREFS, MODE_PRIVATE).getFloat(KEY_BRIGHTNESS, BRIGHTNESS_SYSTEM) }
+            .getOrDefault(BRIGHTNESS_SYSTEM)
+        set(v) { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putFloat(KEY_BRIGHTNESS, v).apply() }
+
+    private fun applyBrightness(v: Float) {
+        val lp = window.attributes
+        if (lp.screenBrightness == v) return
+        lp.screenBrightness = v
+        window.attributes = lp
     }
 
     private fun showInfo() {
@@ -222,5 +253,18 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
             }
         }
         AlertDialog.Builder(this).setTitle(R.string.menu_info).setMessage(text).setPositiveButton(R.string.close, null).show()
+    }
+
+    companion object {
+        private const val PREFS = "celmonitor"
+        private const val KEY_BRIGHTNESS = "brightness"
+        private const val BRIGHTNESS_SYSTEM = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        private val BRIGHTNESS_LEVELS = listOf(
+            R.string.brightness_system to BRIGHTNESS_SYSTEM,
+            R.string.brightness_min to 0.01f,  // 0 turns the backlight off on some devices
+            R.string.brightness_low to 0.25f,
+            R.string.brightness_medium to 0.5f,
+            R.string.brightness_max to 1f,
+        )
     }
 }

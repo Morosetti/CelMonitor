@@ -404,16 +404,30 @@ void HostSession::OnHello(const Hello& h) {
         End(DisconnectReason::VersionMismatch, L"o app do celular usa outra versão do protocolo; atualize os dois lados", true);
         return;
     }
-    uint16_t codecBit = uint16_t(1u << (uint8_t(settings_.codec) - 1));
     std::vector<Mode> modes;
-    for (auto& m : h.modes)
-        if (m.codecMask & codecBit) modes.push_back({m.width, m.height, std::min<uint32_t>(m.maxFps, 60)});
-    if (modes.empty() && settings_.codec != Codec::H264) {
-        if (events_.onWarning) events_.onWarning(Status::Error(L"O celular não decodifica o codec escolhido; usando H.264."));
-        settings_.codec = Codec::H264;
+    auto modesFor = [&](Codec codec) {
+        modes.clear();
+        uint16_t bit = uint16_t(1u << (uint8_t(codec) - 1));
         for (auto& m : h.modes)
-            if (m.codecMask & 1) modes.push_back({m.width, m.height, std::min<uint32_t>(m.maxFps, 60)});
+            if (m.codecMask & bit) modes.push_back({m.width, m.height, std::min<uint32_t>(m.maxFps, 60)});
+        return !modes.empty();
+    };
+    if (!modesFor(settings_.codec)) {
+        // Old devices without a hardware decoder only take JPEG pictures: that is the device's nature, not a problem
+        // with the user's choice, so no warning for it.
+        if (settings_.codec != Codec::H264 && modesFor(Codec::H264)) {
+            if (events_.onWarning) events_.onWarning(Status::Error(L"O celular não decodifica o codec escolhido; usando H.264."));
+            settings_.codec = Codec::H264;
+        } else if (modesFor(Codec::Jpeg)) {
+            Log::Info("phone has no hardware video decoder: JPEG pictures");
+            settings_.codec = Codec::Jpeg;
+        }
     }
+    uint32_t cap = 1;
+    for (auto& m : modes) cap = std::max(cap, m.refreshHz);
+    fpsCap_ = cap;
+    settings_.fps = std::min(settings_.fps, cap);
+    flowWindow_ = settings_.codec == Codec::Jpeg ? 1 : kFlowWindow;
     if (modes.empty()) {
         End(DisconnectReason::DecoderError, L"o celular não tem decoder de vídeo compatível", true);
         return;
@@ -500,6 +514,7 @@ void HostSession::OnHello(const Hello& h) {
     pc.codec = settings_.codec;
     pc.fps = settings_.fps;
     pc.bitrateKbps = BitrateFor(current.width, current.height);
+    pc.quality = settings_.quality;
     PipelineEvents pe;
     pe.onStreamStart = [this](uint32_t w, uint32_t hh, const std::wstring& enc) { OnStreamStart(w, hh, enc); };
     pe.onFrame = [this](EncodedFrame&& f) { OnFrame(std::move(f)); };
@@ -512,7 +527,7 @@ void HostSession::OnHello(const Hello& h) {
     };
     pe.canSend = [this] {
         std::lock_guard<std::mutex> lock(lock_);
-        return streamReady_ && lastFrameSent_ - lastFrameAcked_ < kFlowWindow;
+        return streamReady_ && lastFrameSent_ - lastFrameAcked_ < flowWindow_;
     };
     pipeline_.Start(pc, pe);
 }
@@ -602,7 +617,7 @@ void HostSession::OnTouch(const InputTouch& t) {
 // ------------------------------------------------------------------------------------------------ live settings
 
 void HostSession::SetFps(uint32_t fps) {
-    fps = std::clamp<uint32_t>(fps, 1, 60);
+    fps = std::clamp<uint32_t>(fps, 1, fpsCap_.load());
     settings_.fps = fps;
     pipeline_.SetFps(fps);
     auto m = Info().mode;
@@ -611,6 +626,7 @@ void HostSession::SetFps(uint32_t fps) {
 
 void HostSession::SetQuality(uint32_t quality) {
     settings_.quality = std::clamp<uint32_t>(quality, 1, 100);
+    pipeline_.SetQuality(settings_.quality);
     auto m = Info().mode;
     if (m.width) pipeline_.SetBitrate(BitrateFor(m.width, m.height));
 }

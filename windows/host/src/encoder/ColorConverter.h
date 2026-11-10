@@ -1,4 +1,4 @@
-// BGRA → NV12 (BT.709 limited range) and optional scaling on the GPU's video engine (ID3D11VideoProcessor).
+// BGRA → NV12 (BT.709 limited range for video, BT.601 full range for JPEG) and optional scaling on the GPU's video engine (ID3D11VideoProcessor).
 #pragma once
 
 #include <map>
@@ -9,7 +9,8 @@ namespace celmon {
 
 class ColorConverter {
 public:
-    Status Init(D3DContext& d3d, uint32_t inW, uint32_t inH, uint32_t outW, uint32_t outH);
+    // jpeg: BT.601 full range (JFIF) instead of BT.709 studio range (H.264/H.265 VUI).
+    Status Init(D3DContext& d3d, uint32_t inW, uint32_t inH, uint32_t outW, uint32_t outH, bool jpeg = false);
     Status Convert(ID3D11Texture2D* bgra, ID3D11Texture2D* nv12);
 
 private:

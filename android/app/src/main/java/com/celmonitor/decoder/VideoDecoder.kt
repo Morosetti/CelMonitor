@@ -1,12 +1,12 @@
 package com.celmonitor.decoder
 
+import android.annotation.TargetApi
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import com.celmonitor.display.DeviceDisplay
@@ -16,21 +16,15 @@ import com.celmonitor.protocol.VideoFrameHeader
 import java.util.ArrayDeque
 
 /**
- * Hardware decoder rendering straight into the SurfaceView's Surface (zero copy).
+ * Hardware decoder (Android 6+: asynchronous MediaCodec API) rendering straight into the SurfaceView's Surface (zero copy).
  * Frames are pushed from the network thread with [submit]; MediaCodec callbacks run on a private thread.
  */
+@TargetApi(23)
 class VideoDecoder(
     private val config: StreamConfig,
     private val surface: Surface,
-    private val listener: Listener,
-) {
-    interface Listener {
-        /** Frame handed to the decoder (flow-control ACK). */
-        fun onFrameQueued(frame: VideoFrameHeader, processingUs: Int)
-        /** Frame released to the display (latency ACK). */
-        fun onFrameRendered(frame: VideoFrameHeader, processingUs: Int)
-        fun onDecoderError(message: String)
-    }
+    private val listener: FrameDecoder.Listener,
+) : FrameDecoder {
 
     private class Pending(val header: VideoFrameHeader, val data: ByteArray, val offset: Int, val length: Int, val receivedNs: Long)
     private class InFlight(val header: VideoFrameHeader, val receivedNs: Long)
@@ -46,11 +40,11 @@ class VideoDecoder(
     private var waitingForKeyframe = true
     private var lastCodecConfig: Pending? = null
 
-    var name: String = "?"; private set
-    var lowLatencyEnabled = false; private set
+    override var name: String = "?"; private set
+    override var lowLatencyEnabled = false; private set
 
     /** @throws Exception if no decoder can be configured for this stream. */
-    fun start() {
+    override fun start() {
         val info = DeviceDisplay.findDecoder(config.codec) ?: throw IllegalStateException("no ${config.codec} decoder")
         name = info.name
         val c = MediaCodec.createByCodecName(info.name)
@@ -96,9 +90,8 @@ class VideoDecoder(
         return f
     }
 
-    /** Called from the network thread. [data] must not be reused by the caller. */
-    fun submit(header: VideoFrameHeader, data: ByteArray, offset: Int, length: Int) {
-        val p = Pending(header, data, offset, length, SystemClock.elapsedRealtimeNanos())
+    override fun submit(header: VideoFrameHeader, data: ByteArray, offset: Int, length: Int) {
+        val p = Pending(header, data, offset, length, System.nanoTime())
         synchronized(lock) {
             if (released) return
             if (header.isCodecConfig) {
@@ -184,7 +177,7 @@ class VideoDecoder(
         }
     }
 
-    fun release() {
+    override fun release() {
         val c: MediaCodec?
         synchronized(lock) {
             if (released) return
@@ -198,7 +191,7 @@ class VideoDecoder(
         thread.quitSafely()
     }
 
-    private fun elapsedUs(sinceNs: Long) = ((SystemClock.elapsedRealtimeNanos() - sinceNs) / 1000).toInt()
+    private fun elapsedUs(sinceNs: Long) = FrameDecoder.elapsedUs(sinceNs)
 
     companion object { private const val TAG = "VideoDecoder" }
 }
