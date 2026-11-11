@@ -102,8 +102,15 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
     private fun enterMonitorMode(s: State.Streaming) {
         val c = s.config
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        requestedOrientation = if (c.width >= c.height) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        // USER_* still flips 180° with auto-rotate on, but with rotation locked the accelerometer stays off; SENSOR_*
+        // keeps it running regardless, and on some devices (Galaxy Tab 2, LineageOS 13) its HAL then eats a CPU core.
+        val landscape = c.width >= c.height
+        requestedOrientation = when {
+            Build.VERSION.SDK_INT >= 18 && landscape -> ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+            Build.VERSION.SDK_INT >= 18 -> ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+            landscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
         hideSystemBars()
         applyBrightness(brightness)
         statusPanel.visibility = View.GONE

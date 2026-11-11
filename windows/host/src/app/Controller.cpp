@@ -286,6 +286,13 @@ bool Controller::EnsureAppUpToDate(const PhoneDevice& dev) {
         std::lock_guard<std::mutex> lock(lock_);
         if (appChecked_) return !installBlocked_;
     }
+    if (!adb_.BootCompleted(dev.serial)) {
+        // Just rebooted: asking or installing now fails ("Could not access the Package Manager"). Check again shortly.
+        SetPhase(Phase::WaitingApp, L"Aguardando o celular terminar de ligar...");
+        std::lock_guard<std::mutex> lock(lock_);
+        nextAttempt_ = GetTickCount64() + 2000;
+        return false;
+    }
     std::optional<uint32_t> installed = adb_.InstalledVersionCode(dev.serial);
     std::wstring apk = FindApk();
     uint32_t bundled = apk.empty() ? 0 : ApkVersionCode(apk);

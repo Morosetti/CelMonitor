@@ -198,14 +198,22 @@ std::optional<uint32_t> AdbTransport::InstalledVersionCode(const std::string& se
     // Presence through "pm path" (unambiguous); dumpsys only for the version.
     if (Run(dev + L"pm path " + Widen(kPackage), out, 15000) < 0) return std::nullopt;
     if (out.find("package:") == std::string::npos) {
-        // Not installed ("pm path" prints nothing and exits 1) vs. adb error ("error: device ... not found").
-        return out.find("error") == std::string::npos ? std::optional<uint32_t>(0) : std::nullopt;
+        // Not installed ("pm path" prints nothing and exits 1) vs. adb error ("error: device ... not found") or a
+        // phone still booting ("Error: Could not access the Package Manager").
+        std::string lower = out;
+        for (auto& c : lower) c = char(tolower(uint8_t(c)));
+        return lower.find("error") == std::string::npos ? std::optional<uint32_t>(0) : std::nullopt;
     }
     if (Run(dev + L"dumpsys package " + Widen(kPackage), out, 15000) != 0) return std::nullopt;
     size_t p = out.find("versionCode=");  // "    versionCode=2 minSdk=29 targetSdk=34"
     if (p == std::string::npos) return std::nullopt;
     uint32_t v = uint32_t(strtoul(out.c_str() + p + 12, nullptr, 10));
     return v ? std::optional<uint32_t>(v) : std::nullopt;
+}
+
+bool AdbTransport::BootCompleted(const std::string& serial) {
+    std::string out;
+    return Run(L"-s " + Widen(serial) + L" shell getprop sys.boot_completed", out) == 0 && Trim(out) == "1";
 }
 
 std::wstring AdbTransport::Manufacturer(const std::string& serial) {

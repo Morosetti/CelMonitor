@@ -102,7 +102,15 @@ Status VirtualDisplay::Add(uint64_t deviceKey, const std::string& name, const st
 
     CELMON_ADD_MONITOR_OUT out{};
     DWORD r = 0;
-    if (!Ioctl(IOCTL_CELMON_ADD_MONITOR, &in, sizeof(in), &out, sizeof(out), &r) || r != sizeof(out)) {
+    bool ok = Ioctl(IOCTL_CELMON_ADD_MONITOR, &in, sizeof(in), &out, sizeof(out), &r) && r == sizeof(out);
+    if (!ok && GetLastError() == ERROR_ALREADY_EXISTS) {
+        // This phone still has a monitor from a CelMonitor that died without removing it. Any request refreshes the
+        // driver's watchdog, so retrying would keep it alive forever: stay silent until the watchdog drops it.
+        Log::Warn("stale monitor for this phone (previous host crashed?): waiting for the driver watchdog");
+        Sleep(CELMON_WATCHDOG_TIMEOUT_MS + 1500);
+        ok = Ioctl(IOCTL_CELMON_ADD_MONITOR, &in, sizeof(in), &out, sizeof(out), &r) && r == sizeof(out);
+    }
+    if (!ok) {
         DWORD e = GetLastError();
         return Status::Error(L"O driver não criou o monitor virtual: " + Win32ErrorText(e));
     }

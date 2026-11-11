@@ -39,7 +39,8 @@ void Init(bool console) {
         CoTaskMemFree(base);
         CreateDirectoryW(dir.c_str(), nullptr);
         g_path = dir + L"\\celmonitor.log";
-        g_file = _wfsopen(g_path.c_str(), L"a", _SH_DENYWR);
+        // "N": not inherited, or the adb server we spawn keeps the file open and the next CelMonitor can't log.
+        g_file = _wfsopen(g_path.c_str(), L"aN", _SH_DENYWR);
     }
 }
 

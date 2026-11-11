@@ -42,6 +42,8 @@ public:
     // versionCode of the app installed on the phone (dumpsys package): 0 when it is not installed, nullopt when the
     // phone could not be queried.
     std::optional<uint32_t> InstalledVersionCode(const std::string& serial);
+    // sys.boot_completed: while the phone is still starting, its package manager is not up yet.
+    bool BootCompleted(const std::string& serial);
     // ro.product.manufacturer ("Xiaomi", "samsung"...), empty if unknown.
     std::wstring Manufacturer(const std::string& serial);
 
