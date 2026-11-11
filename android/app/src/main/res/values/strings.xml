@@ -11,6 +11,8 @@
     <string name="menu_orientation">Orientação</string>
     <string name="menu_landscape">Paisagem</string>
     <string name="menu_portrait">Retrato</string>
+    <string name="menu_flip">Girar 180°</string>
+    <string name="flip_needs_autorotate">Para girar 180°, ative a rotação automática do aparelho (com ela travada, o Android ignora o pedido).</string>
     <string name="menu_quality">Qualidade</string>
     <string name="menu_quality_low">Baixa (menos banda)</string>
     <string name="menu_quality_medium">Média</string>

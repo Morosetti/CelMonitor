@@ -11,8 +11,8 @@ android {
         applicationId = "com.celmonitor"
         minSdk = 15 // Android 4.0.3: old tablets use the JPEG path (no MediaCodec before 4.1)
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
     }
 
     buildTypes {

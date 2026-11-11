@@ -102,21 +102,41 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
     private fun enterMonitorMode(s: State.Streaming) {
         val c = s.config
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // USER_* still flips 180° with auto-rotate on, but with rotation locked the accelerometer stays off; SENSOR_*
-        // keeps it running regardless, and on some devices (Galaxy Tab 2, LineageOS 13) its HAL then eats a CPU core.
-        val landscape = c.width >= c.height
-        requestedOrientation = when {
-            Build.VERSION.SDK_INT >= 18 && landscape -> ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
-            Build.VERSION.SDK_INT >= 18 -> ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
-            landscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        }
+        applyMonitorOrientation(c.width >= c.height)
         hideSystemBars()
         applyBrightness(brightness)
         statusPanel.visibility = View.GONE
         videoFrame.setAspect(c.width, c.height)
         videoFrame.visibility = View.VISIBLE
         menuButton.visibility = View.VISIBLE
+    }
+
+    /**
+     * "Girar 180°" from the menu (a stand or cable that only fits one way); remembered here. null until the user
+     * picks it: then the rotation follows the device (USER_*). Once picked, both ways are fixed, because without a
+     * sensor reading USER_* would keep whatever rotation the screen already has.
+     */
+    private var flipped: Boolean?
+        get() = runCatching {
+            getSharedPreferences(PREFS, MODE_PRIVATE).let { if (it.contains(KEY_FLIPPED)) it.getBoolean(KEY_FLIPPED, false) else null }
+        }.getOrNull()
+        set(v) { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_FLIPPED, v == true).apply() }
+
+    private fun applyMonitorOrientation(landscape: Boolean) {
+        val flip = flipped
+        requestedOrientation = when {
+            flip == true && landscape -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            flip == true -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            flip == false && landscape -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            flip == false -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            // USER_* still flips 180° with auto-rotate on, but with rotation locked the accelerometer stays off;
+            // SENSOR_* keeps it running regardless, and on some devices (Galaxy Tab 2, LineageOS 13) its HAL then
+            // eats a CPU core.
+            Build.VERSION.SDK_INT >= 18 && landscape -> ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+            Build.VERSION.SDK_INT >= 18 -> ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+            landscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
     }
 
     /**
@@ -186,6 +206,8 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
         m.addSubMenu(0, 2, 1, R.string.menu_orientation).apply {
             add(1, 21, 0, R.string.menu_landscape)
             add(1, 22, 1, R.string.menu_portrait)
+            add(5, 23, 2, R.string.menu_flip).isCheckable = true
+            findItem(23).isChecked = flipped == true
         }
         m.addSubMenu(0, 3, 2, R.string.menu_quality).apply {
             add(2, 31, 0, R.string.menu_quality_low)
@@ -207,6 +229,15 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
                 1 -> connections.pause()
                 21 -> connections.sendSettings(ClientSettings(ClientSettings.MASK_ORIENTATION, 0, 0, 0))
                 22 -> connections.sendSettings(ClientSettings(ClientSettings.MASK_ORIENTATION, 0, 0, 1))
+                23 -> {
+                    flipped = flipped != true
+                    (connections.state as? State.Streaming)?.let { applyMonitorOrientation(it.config.width >= it.config.height) }
+                    // With rotation locked, Android keeps the locked rotation even for a REVERSE_* request.
+                    val locked = runCatching {
+                        android.provider.Settings.System.getInt(contentResolver, android.provider.Settings.System.ACCELEROMETER_ROTATION) == 0
+                    }.getOrDefault(false)
+                    if (flipped == true && locked) Toast.makeText(this, R.string.flip_needs_autorotate, Toast.LENGTH_LONG).show()
+                }
                 31 -> connections.sendSettings(ClientSettings(ClientSettings.MASK_QUALITY, 0, 30, 0))
                 32 -> connections.sendSettings(ClientSettings(ClientSettings.MASK_QUALITY, 0, 60, 0))
                 33 -> connections.sendSettings(ClientSettings(ClientSettings.MASK_QUALITY, 0, 90, 0))
@@ -265,6 +296,7 @@ class MainActivity : Activity(), ConnectionManager.Listener, SurfaceHolder.Callb
     companion object {
         private const val PREFS = "celmonitor"
         private const val KEY_BRIGHTNESS = "brightness"
+        private const val KEY_FLIPPED = "flipped"
         private const val BRIGHTNESS_SYSTEM = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         private val BRIGHTNESS_LEVELS = listOf(
             R.string.brightness_system to BRIGHTNESS_SYSTEM,
