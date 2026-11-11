@@ -353,6 +353,18 @@ void Controller::StartSession(std::unique_ptr<IConnection> conn) {
         sessionEnded_ = true;
         SetEvent(wake_);
     };
+    ev.onPhoneSettings = [this](uint32_t mask, const SessionSettings& applied) {
+        // Remember what the user picked on the phone, as if picked on the PC (next connection starts with it).
+        std::lock_guard<std::mutex> lock(lock_);
+        auto& s = profile_.session;
+        if (mask & proto::ClientSettings::MaskFps) s.fps = applied.fps;
+        if (mask & proto::ClientSettings::MaskQuality) s.quality = applied.quality;
+        if (mask & proto::ClientSettings::MaskOrientation) {
+            s.portrait = applied.portrait;
+            if (s.mode && (s.mode->height > s.mode->width) != s.portrait) s.mode = Mode{s.mode->height, s.mode->width, 60};
+        }
+        profile_.Save(profileSerial_);
+    };
     SessionSettings settings;
     {
         std::lock_guard<std::mutex> lock(lock_);

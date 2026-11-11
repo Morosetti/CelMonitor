@@ -364,6 +364,7 @@ void HostSession::Handle(uint16_t type, const std::vector<uint8_t>& p) {
         if (s->mask & ClientSettings::MaskFps) SetFps(s->fps);
         if (s->mask & ClientSettings::MaskQuality) SetQuality(s->quality);
         if (s->mask & ClientSettings::MaskOrientation) SetOrientation(s->orientation == 1);
+        if (events_.onPhoneSettings) events_.onPhoneSettings(s->mask, settings_);
         break;
     }
     case MsgType::InputMouse:

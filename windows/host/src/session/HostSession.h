@@ -49,6 +49,9 @@ public:
         std::function<void(const Status&)> onWarning;        // non-fatal problem to show
         // byPhoneUser: the user left monitor mode on the phone (don't reopen the app automatically).
         std::function<void(const std::wstring& why, bool byPhoneUser)> onEnded;
+        // The user changed fps/quality/orientation in the phone's menu (mask = proto::ClientSettings::Mask*):
+        // the settings as applied, so they can be remembered for this phone.
+        std::function<void(uint32_t mask, const SessionSettings& applied)> onPhoneSettings;
     };
 
     HostSession(std::unique_ptr<IConnection> conn, SessionSettings settings, Events events);
